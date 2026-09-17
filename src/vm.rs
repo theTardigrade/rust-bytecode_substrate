@@ -15,7 +15,7 @@ use crate::opcodes::{
 pub type Word = u64;
 
 fn pop_word(stack: &mut Vec<Word>) -> Word {
-	stack.pop().expect("Stack underflow")
+	stack.pop().expect("stack underflow")
 }
 
 fn get_next_byte_from_program(program: &[u8], ip: &mut usize) -> u8 {
@@ -114,20 +114,20 @@ fn decode_i4(value: u8) -> i8 {
 
 fn add_relative_offset(ip: usize, offset: i64) -> usize {
 	if offset >= 0 {
-		let offset = usize::try_from(offset).expect("Relative offset is too large for this platform");
-		ip.checked_add(offset).expect("Control-flow target is out of range")
+		let offset = usize::try_from(offset).expect("relative offset is too large for this platform");
+		ip.checked_add(offset).expect("control-flow target is out of range")
 	} else {
-		let offset = usize::try_from(offset.unsigned_abs()).expect("Relative offset is too large for this platform");
-		ip.checked_sub(offset).expect("Control-flow target is out of range")
+		let offset = usize::try_from(offset.unsigned_abs()).expect("relative offset is too large for this platform");
+		ip.checked_sub(offset).expect("control-flow target is out of range")
 	}
 }
 
 fn get_memory_range(memory: &[u8], address: Word, length: usize) -> std::ops::Range<usize> {
-	let start = usize::try_from(address).expect("Memory address is too large for this platform");
-	let end = start.checked_add(length).expect("Memory access is out of range");
+	let start = usize::try_from(address).expect("memory address is too large for this platform");
+	let end = start.checked_add(length).expect("memory access is out of range");
 
 	if end > memory.len() {
-		panic!("Memory access is out of bounds");
+		panic!("memory access is out of bounds");
 	}
 
 	start..end
@@ -179,7 +179,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 			continue;
 		}
 
-		let opcode = OpcodeByte::try_from(raw_opcode_byte).expect("Unknown opcode byte");
+		let opcode = OpcodeByte::try_from(raw_opcode_byte).expect("unknown opcode byte");
 
 		match opcode {
 			OpcodeByte::Noop => {}
@@ -210,7 +210,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let a = pop_word(&mut stack);
 
 				if b == 0 {
-					panic!("Division by zero");
+					panic!("division by zero");
 				}
 
 				stack.push(a / b);
@@ -221,7 +221,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let a = pop_word(&mut stack) as i64;
 
 				if b == 0 {
-					panic!("Division by zero");
+					panic!("division by zero");
 				}
 
 				if a == i64::MIN && b == -1 {
@@ -236,7 +236,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let a = pop_word(&mut stack);
 
 				if b == 0 {
-					panic!("Remainder by zero");
+					panic!("remainder by zero");
 				}
 
 				stack.push(a % b);
@@ -247,7 +247,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let a = pop_word(&mut stack) as i64;
 
 				if b == 0 {
-					panic!("Remainder by zero");
+					panic!("remainder by zero");
 				}
 
 				if a == i64::MIN && b == -1 {
@@ -309,7 +309,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 			}
 
 			OpcodeByte::Dup => {
-				let value = *stack.last().expect("Stack underflow");
+				let value = *stack.last().expect("stack underflow");
 				stack.push(value);
 			}
 
@@ -516,21 +516,21 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 
 			OpcodeByte::JumpAbsIndirect => {
 				let target = pop_word(&mut stack);
-				let target = usize::try_from(target).expect("Jump target is too large for this platform");
+				let target = usize::try_from(target).expect("jump target is too large for this platform");
 
 				ip = target;
 			}
 
 			OpcodeByte::CallAbsIndirect => {
 				let target = pop_word(&mut stack);
-				let target = usize::try_from(target).expect("Call target is too large for this platform");
+				let target = usize::try_from(target).expect("call target is too large for this platform");
 
 				call_stack.push(ip);
 				ip = target;
 			}
 
 			OpcodeByte::Return => {
-				ip = call_stack.pop().expect("Call stack underflow");
+				ip = call_stack.pop().expect("call stack underflow");
 			}
 
 			OpcodeByte::MemLoad8 => {
@@ -625,9 +625,9 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 
 			OpcodeByte::MemGrow => {
 				let amount = pop_word(&mut stack);
-				let amount = usize::try_from(amount).expect("Memory growth amount is too large for this platform");
+				let amount = usize::try_from(amount).expect("memory growth amount is too large for this platform");
 				let old_size = memory.len();
-				let new_size = old_size.checked_add(amount).expect("Memory size is too large for this platform");
+				let new_size = old_size.checked_add(amount).expect("memory size is too large for this platform");
 
 				memory.resize(new_size, 0);
 				stack.push(old_size as Word);
@@ -638,7 +638,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let source = pop_word(&mut stack);
 				let destination = pop_word(&mut stack);
 
-				let length = usize::try_from(length).expect("Memory copy length is too large for this platform");
+				let length = usize::try_from(length).expect("memory copy length is too large for this platform");
 				let source_range = get_memory_range(&memory, source, length);
 				let destination_range = get_memory_range(&memory, destination, length);
 
@@ -650,7 +650,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let value = pop_word(&mut stack);
 				let address = pop_word(&mut stack);
 
-				let length = usize::try_from(length).expect("Memory fill length is too large for this platform");
+				let length = usize::try_from(length).expect("memory fill length is too large for this platform");
 				let range = get_memory_range(&memory, address, length);
 
 				memory[range].fill(value as u8);

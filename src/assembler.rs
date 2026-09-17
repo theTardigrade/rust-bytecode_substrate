@@ -49,7 +49,7 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 	let parts: Vec<&str> = line.split_whitespace().collect();
 
 	if parts.is_empty() {
-		return Err("Expected instruction".to_string());
+		return Err("expected instruction".to_string());
 	}
 
 	match parts[0] {
@@ -79,7 +79,7 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			Ok(AssemblyInstruction::Halt)
 		}
 
-		_ => Err(format!("Unknown instruction: {}", parts[0])),
+		_ => Err(format!("unknown instruction: {}", parts[0])),
 	}
 }
 
@@ -109,13 +109,13 @@ fn parse_integer_literal(text: &str) -> Result<IntegerLiteral, String> {
 	};
 
 	let magnitude = u64::from_str_radix(digits, radix)
-		.map_err(|_| format!("Invalid integer literal: {}", text))?;
+		.map_err(|_| format!("invalid integer literal: {}", text))?;
 
 	if negative {
 		let maximum_magnitude = (i64::MAX as u64) + 1;
 
 		if magnitude > maximum_magnitude {
-			return Err(format!("Signed integer literal is too small: {}", text));
+			return Err(format!("signed integer literal is too small: {}", text));
 		}
 
 		if magnitude == maximum_magnitude {

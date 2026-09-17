@@ -3,7 +3,7 @@ mod vm;
 mod assembler;
 
 fn main() {
-	println!("Running: Language Substrate VM");
+	println!("running: language substrate VM");
 
 
 	let source = r#"
@@ -15,9 +15,9 @@ fn main() {
 
 	let program = assembler::assemble(source).expect("Assembly failed");
 
-	println!("Bytecode: {:02X?}", program);
+	println!("bytecode: {:02X?}", program);
 
 	let stack = vm::run_program(&program);
 
-	println!("Stack: {:?}", stack);
+	println!("stack: {:?}", stack);
 }
