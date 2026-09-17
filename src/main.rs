@@ -236,6 +236,20 @@ fn main() {
 				let ext2_opcode_nibble = Ext2OpcodeNibble::try_from(raw_ext2_opcode_nibble).expect("Unknown Ext2 opcode nibble");
 
 				match ext2_opcode_nibble {
+					Ext2OpcodeNibble::CompEqual => {
+						let b = stack.pop().expect("Stack underflow");
+						let a = stack.pop().expect("Stack underflow");
+
+						stack.push(if a == b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompNotEqual => {
+						let b = stack.pop().expect("Stack underflow");
+						let a = stack.pop().expect("Stack underflow");
+
+						stack.push(if a != b { 1 } else { 0 });
+					}
+
 					Ext2OpcodeNibble::CompLessThanUnsigned => {
 						let b = stack.pop().expect("Stack underflow");
 						let a = stack.pop().expect("Stack underflow");
@@ -248,6 +262,48 @@ fn main() {
 						let a = stack.pop().expect("Stack underflow") as i64;
 
 						stack.push(if a < b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompLessThanOrEqualUnsigned => {
+						let b = stack.pop().expect("Stack underflow");
+						let a = stack.pop().expect("Stack underflow");
+
+						stack.push(if a <= b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompLessThanOrEqualSigned => {
+						let b = stack.pop().expect("Stack underflow") as i64;
+						let a = stack.pop().expect("Stack underflow") as i64;
+
+						stack.push(if a <= b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompGreaterThanUnsigned => {
+						let b = stack.pop().expect("Stack underflow");
+						let a = stack.pop().expect("Stack underflow");
+
+						stack.push(if a > b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompGreaterThanSigned => {
+						let b = stack.pop().expect("Stack underflow") as i64;
+						let a = stack.pop().expect("Stack underflow") as i64;
+
+						stack.push(if a > b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompGreaterThanOrEqualUnsigned => {
+						let b = stack.pop().expect("Stack underflow");
+						let a = stack.pop().expect("Stack underflow");
+
+						stack.push(if a >= b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompGreaterThanOrEqualSigned => {
+						let b = stack.pop().expect("Stack underflow") as i64;
+						let a = stack.pop().expect("Stack underflow") as i64;
+
+						stack.push(if a >= b { 1 } else { 0 });
 					}
 
 					Ext2OpcodeNibble::Halt => {

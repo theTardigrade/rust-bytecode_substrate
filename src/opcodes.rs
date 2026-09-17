@@ -35,7 +35,15 @@ pub enum Ext1OpcodeNibble {
 #[derive(TryFromPrimitive)]
 #[repr(u8)]
 pub enum Ext2OpcodeNibble {
-	CompLessThanUnsigned = 0x0,
-	CompLessThanSigned   = 0x1,
-	Halt                 = 0xF,
+	CompEqual                      = 0x0,
+	CompNotEqual                   = 0x1,
+	CompLessThanUnsigned           = 0x2,
+	CompLessThanSigned             = 0x3,
+	CompLessThanOrEqualUnsigned    = 0x4,
+	CompLessThanOrEqualSigned      = 0x5,
+	CompGreaterThanUnsigned        = 0x6,
+	CompGreaterThanSigned          = 0x7,
+	CompGreaterThanOrEqualUnsigned = 0x8,
+	CompGreaterThanOrEqualSigned   = 0x9,
+	Halt                           = 0xF,
 }
