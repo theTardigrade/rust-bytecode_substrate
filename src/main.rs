@@ -1,39 +1,6 @@
-use num_enum::TryFromPrimitive;
+mod opcodes;
 
-#[derive(TryFromPrimitive)]
-#[repr(u8)]
-enum OpcodeNibble {
-	Noop   = 0x0,
-	Push4  = 0x1,
-	Add    = 0x2,
-	Sub    = 0x3,
-	Mul    = 0x4,
-	BitAnd = 0x5,
-	BitOr  = 0x6,
-	BitXor = 0x7,
-	BitNot = 0x8,
-	Halt   = 0xD,
-	Ext1   = 0xE,
-	Ext2   = 0xF,
-}
-
-#[derive(TryFromPrimitive)]
-#[repr(u8)]
-enum Ext1OpcodeNibble {
-	Push8       = 0x0,
-	Push16      = 0x1,
-	Push32      = 0x2,
-	Push64      = 0x3,
-	DivUnsigned = 0x4,
-	DivSigned   = 0x5,
-}
-
-#[derive(TryFromPrimitive)]
-#[repr(u8)]
-enum Ext2OpcodeNibble {
-	CompLessThanUnsigned = 0x0,
-	CompLessThanSigned   = 0x1,
-}
+use opcodes::{OpcodeNibble, Ext1OpcodeNibble, Ext2OpcodeNibble};
 
 type Word = u64;
 
@@ -165,6 +132,33 @@ fn main() {
 				let a = stack.pop().expect("Stack underflow");
 
 				stack.push(!a);
+			}
+
+			OpcodeNibble::ShiftLeft => {
+				let b = stack.pop().expect("Stack underflow");
+				let a = stack.pop().expect("Stack underflow");
+
+				let shift = b & 0x3F;
+
+				stack.push(a << shift);
+			}
+
+			OpcodeNibble::LogicShiftRight => {
+				let b = stack.pop().expect("Stack underflow");
+				let a = stack.pop().expect("Stack underflow");
+
+				let shift = b & 0x3F;
+
+				stack.push(a >> shift);
+			}
+
+			OpcodeNibble::ArithShiftRight => {
+				let b = stack.pop().expect("Stack underflow");
+				let a = stack.pop().expect("Stack underflow") as i64;
+
+				let shift = b & 0x3F;
+
+				stack.push((a >> shift) as Word);
 			}
 
 			OpcodeNibble::Halt => {
