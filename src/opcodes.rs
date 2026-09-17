@@ -87,7 +87,10 @@ pub enum OpcodeByte {
 	MemSize                        = 0x37,
 	MemGrow                        = 0x38,
 
-	// 0x39–0xAF currently free
+    MemCopy8                       = 0x39,
+	MemFill8                       = 0x3A,
+
+	// 0x3B–0xAF currently free
 
 	// 0xB0–0xBF = CallRelSigned4, with signed 4-bit relative offset encoded in low nibble
 	// 0xC0–0xCF = JumpIfZeroRelSigned4, with signed 4-bit relative offset encoded in low nibble

@@ -616,6 +616,29 @@ fn main() {
 				stack.push(old_size as Word);
 			}
 
+			OpcodeByte::MemCopy8 => {
+				let length = stack.pop().expect("Stack underflow");
+				let source = stack.pop().expect("Stack underflow");
+				let destination = stack.pop().expect("Stack underflow");
+
+				let length = usize::try_from(length).expect("Memory copy length is too large for this platform");
+				let source_range = get_memory_range(&memory, source, length);
+				let destination_range = get_memory_range(&memory, destination, length);
+
+				memory.copy_within(source_range, destination_range.start);
+			}
+
+			OpcodeByte::MemFill8 => {
+				let length = stack.pop().expect("Stack underflow");
+				let value = stack.pop().expect("Stack underflow");
+				let address = stack.pop().expect("Stack underflow");
+
+				let length = usize::try_from(length).expect("Memory fill length is too large for this platform");
+				let range = get_memory_range(&memory, address, length);
+
+				memory[range].fill(value as u8);
+			}
+
 			OpcodeByte::Halt => {
 				break;
 			}
