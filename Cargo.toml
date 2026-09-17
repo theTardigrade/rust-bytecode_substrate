@@ -1,5 +1,5 @@
 [package]
-name = "rust-language_substrate"
+name = "language_substrate"
 version = "0.1.0"
 edition = "2021"
 
