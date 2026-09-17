@@ -3,26 +3,36 @@ use num_enum::TryFromPrimitive;
 #[derive(TryFromPrimitive)]
 #[repr(u8)]
 enum OpcodeNibble {
-	Noop  = 0x0,
-	Push4 = 0x1,
-	Add   = 0x2,
-	Sub   = 0x3,
-	Mul   = 0x4,
-	Halt  = 0xE,
-	Ext   = 0xF,
+	Noop   = 0x0,
+	Push4  = 0x1,
+	Add    = 0x2,
+	Sub    = 0x3,
+	Mul    = 0x4,
+	BitAnd = 0x5,
+	BitOr  = 0x6,
+	BitXor = 0x7,
+	BitNot = 0x8,
+	Halt   = 0xD,
+	Ext1   = 0xE,
+	Ext2   = 0xF,
 }
 
 #[derive(TryFromPrimitive)]
 #[repr(u8)]
-enum ExtendedOpcodeNibble {
-	Push8            = 0x0,
-	Push16           = 0x1,
-	Push32           = 0x2,
-	Push64           = 0x3,
-	LessThanUnsigned = 0x4,
-	LessThanSigned   = 0x5,
-	DivUnsigned      = 0x6,
-	DivSigned        = 0x7,
+enum Ext1OpcodeNibble {
+	Push8       = 0x0,
+	Push16      = 0x1,
+	Push32      = 0x2,
+	Push64      = 0x3,
+	DivUnsigned = 0x4,
+	DivSigned   = 0x5,
+}
+
+#[derive(TryFromPrimitive)]
+#[repr(u8)]
+enum Ext2OpcodeNibble {
+	CompLessThanUnsigned = 0x0,
+	CompLessThanSigned   = 0x1,
 }
 
 type Word = u64;
@@ -88,10 +98,10 @@ fn main() {
 
 	let example_program = [
 		0x1A,                         // PUSH4  10
-		0xF0, 0x14,                   // PUSH8  20
-		0xF1, 0xE8, 0x03,             // PUSH16 1000
-		0xF2, 0x40, 0x42, 0x0F, 0x00, // PUSH32 1,000,000
-		0xE0,                         // HALT, padding
+		0xE0, 0x14,                   // PUSH8  20
+		0xE1, 0xE8, 0x03,             // PUSH16 1000
+		0xE2, 0x40, 0x42, 0x0F, 0x00, // PUSH32 1,000,000
+		0xD0,                         // HALT, padding
 	];
 
 	let mut stack: Vec<Word> = Vec::with_capacity(1 << 12);
@@ -99,7 +109,7 @@ fn main() {
 
 	loop {
 		let raw_opcode_nibble = get_next_nibble_from_program(&example_program, &mut ip);
-		let opcode_nibble = OpcodeNibble::try_from(raw_opcode_nibble).expect("Unknown opcode_nibble");
+		let opcode_nibble = OpcodeNibble::try_from(raw_opcode_nibble).expect("Unknown opcode nibble");
 
 		match opcode_nibble {
 			OpcodeNibble::Noop => {}
@@ -113,7 +123,7 @@ fn main() {
 				let b = stack.pop().expect("Stack underflow");
 				let a = stack.pop().expect("Stack underflow");
 
-				stack.push(a + b);
+				stack.push(a.wrapping_add(b));
 			}
 
 			OpcodeNibble::Sub => {
@@ -130,55 +140,67 @@ fn main() {
 				stack.push(a.wrapping_mul(b));
 			}
 
+			OpcodeNibble::BitAnd => {
+				let b = stack.pop().expect("Stack underflow");
+				let a = stack.pop().expect("Stack underflow");
+
+				stack.push(a & b);
+			}
+
+			OpcodeNibble::BitOr => {
+				let b = stack.pop().expect("Stack underflow");
+				let a = stack.pop().expect("Stack underflow");
+
+				stack.push(a | b);
+			}
+
+			OpcodeNibble::BitXor => {
+				let b = stack.pop().expect("Stack underflow");
+				let a = stack.pop().expect("Stack underflow");
+
+				stack.push(a ^ b);
+			}
+
+			OpcodeNibble::BitNot => {
+				let a = stack.pop().expect("Stack underflow");
+
+				stack.push(!a);
+			}
+
 			OpcodeNibble::Halt => {
 				break;
 			}
 
-			OpcodeNibble::Ext => {
+			OpcodeNibble::Ext1 => {
 				if ip % 2 == 0 {
-					panic!("Extended opcode_nibble is not byte-aligned");
+					panic!("Ext1 opcode nibble is not byte-aligned");
 				}
 
-				let raw_extended_opcode_nibble = get_next_nibble_from_program(&example_program, &mut ip);
-				let extended_opcode_nibble = ExtendedOpcodeNibble::try_from(raw_extended_opcode_nibble)
-					.expect("Unknown extended opcode_nibble");
+				let raw_ext1_opcode_nibble = get_next_nibble_from_program(&example_program, &mut ip);
+				let ext1_opcode_nibble = Ext1OpcodeNibble::try_from(raw_ext1_opcode_nibble).expect("Unknown Ext1 opcode nibble");
 
-				match extended_opcode_nibble {
-					ExtendedOpcodeNibble::Push8 => {
+				match ext1_opcode_nibble {
+					Ext1OpcodeNibble::Push8 => {
 						let value = get_next_byte_from_program(&example_program, &mut ip);
 						stack.push(value as Word);
 					}
 
-					ExtendedOpcodeNibble::Push16 => {
+					Ext1OpcodeNibble::Push16 => {
 						let value = get_next_u16_from_program(&example_program, &mut ip);
 						stack.push(value as Word);
 					}
 
-					ExtendedOpcodeNibble::Push32 => {
+					Ext1OpcodeNibble::Push32 => {
 						let value = get_next_u32_from_program(&example_program, &mut ip);
 						stack.push(value as Word);
 					}
 
-					ExtendedOpcodeNibble::Push64 => {
+					Ext1OpcodeNibble::Push64 => {
 						let value = get_next_u64_from_program(&example_program, &mut ip);
 						stack.push(value as Word);
 					}
 
-					ExtendedOpcodeNibble::LessThanUnsigned => {
-						let b = stack.pop().expect("Stack underflow");
-						let a = stack.pop().expect("Stack underflow");
-
-						stack.push(if a < b { 1 } else { 0 });
-					}
-
-					ExtendedOpcodeNibble::LessThanSigned => {
-						let b = stack.pop().expect("Stack underflow") as i64;
-						let a = stack.pop().expect("Stack underflow") as i64;
-
-						stack.push(if a < b { 1 } else { 0 });
-					}
-
-					ExtendedOpcodeNibble::DivUnsigned => {
+					Ext1OpcodeNibble::DivUnsigned => {
 						let b = stack.pop().expect("Stack underflow");
 						let a = stack.pop().expect("Stack underflow");
 
@@ -189,7 +211,7 @@ fn main() {
 						stack.push(a / b);
 					}
 
-					ExtendedOpcodeNibble::DivSigned => {
+					Ext1OpcodeNibble::DivSigned => {
 						let b = stack.pop().expect("Stack underflow") as i64;
 						let a = stack.pop().expect("Stack underflow") as i64;
 
@@ -202,6 +224,31 @@ fn main() {
 						} else {
 							stack.push((a / b) as Word);
 						}
+					}
+				}
+			}
+
+			OpcodeNibble::Ext2 => {
+				if ip % 2 == 0 {
+					panic!("Ext2 opcode nibble is not byte-aligned");
+				}
+
+				let raw_ext2_opcode_nibble = get_next_nibble_from_program(&example_program, &mut ip);
+				let ext2_opcode_nibble = Ext2OpcodeNibble::try_from(raw_ext2_opcode_nibble).expect("Unknown Ext2 opcode nibble");
+
+				match ext2_opcode_nibble {
+					Ext2OpcodeNibble::CompLessThanUnsigned => {
+						let b = stack.pop().expect("Stack underflow");
+						let a = stack.pop().expect("Stack underflow");
+
+						stack.push(if a < b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::CompLessThanSigned => {
+						let b = stack.pop().expect("Stack underflow") as i64;
+						let a = stack.pop().expect("Stack underflow") as i64;
+
+						stack.push(if a < b { 1 } else { 0 });
 					}
 				}
 			}
