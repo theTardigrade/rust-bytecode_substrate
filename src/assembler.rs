@@ -6,13 +6,13 @@ use crate::opcodes::{
 	PUSH_SIGNED4_END,
 };
 
-enum PushValue {
+enum IntegerLiteral {
 	Unsigned(u64),
 	Signed(i64),
 }
 
 enum AssemblyInstruction {
-	Push(PushValue),
+	Push(IntegerLiteral),
 	Add,
 	Halt,
 }
@@ -48,34 +48,83 @@ fn parse_source(source: &str) -> Result<Vec<AssemblyInstruction>, String> {
 fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 	let parts: Vec<&str> = line.split_whitespace().collect();
 
+	if parts.is_empty() {
+		return Err("Expected instruction".to_string());
+	}
+
 	match parts[0] {
 		"PUSH" => {
-			let text = parts[1];
-
-			if text.starts_with('-') {
-				let value = text
-					.parse::<i64>()
-					.map_err(|_| format!("Invalid signed value: {}", text))?;
-
-				Ok(AssemblyInstruction::Push(
-					PushValue::Signed(value)
-				))
-			} else {
-				let value = text
-					.parse::<u64>()
-					.map_err(|_| format!("Invalid unsigned value: {}", text))?;
-
-				Ok(AssemblyInstruction::Push(
-					PushValue::Unsigned(value)
-				))
+			if parts.len() != 2 {
+				return Err("PUSH expects exactly one operand".to_string());
 			}
+
+			let integer_literal = parse_integer_literal(parts[1])?;
+
+			Ok(AssemblyInstruction::Push(integer_literal))
 		}
 
-		"ADD" => Ok(AssemblyInstruction::Add),
+		"ADD" => {
+			if parts.len() != 1 {
+				return Err("ADD does not take any operands".to_string());
+			}
 
-		"HALT" => Ok(AssemblyInstruction::Halt),
+			Ok(AssemblyInstruction::Add)
+		}
+
+		"HALT" => {
+			if parts.len() != 1 {
+				return Err("HALT does not take any operands".to_string());
+			}
+
+			Ok(AssemblyInstruction::Halt)
+		}
 
 		_ => Err(format!("Unknown instruction: {}", parts[0])),
+	}
+}
+
+fn parse_integer_literal(text: &str) -> Result<IntegerLiteral, String> {
+	let text_without_separators = text.replace('_', "");
+
+	let (negative, unsigned_text) = if let Some(rest) = text_without_separators.strip_prefix('-') {
+		(true, rest)
+	} else {
+		(false, text_without_separators.as_str())
+	};
+
+	let (radix, digits) = if let Some(rest) = unsigned_text.strip_prefix("0x")
+		.or_else(|| unsigned_text.strip_prefix("0X"))
+	{
+		(16, rest)
+	} else if let Some(rest) = unsigned_text.strip_prefix("0b")
+		.or_else(|| unsigned_text.strip_prefix("0B"))
+	{
+		(2, rest)
+	} else if let Some(rest) = unsigned_text.strip_prefix("0o")
+		.or_else(|| unsigned_text.strip_prefix("0O"))
+	{
+		(8, rest)
+	} else {
+		(10, unsigned_text)
+	};
+
+	let magnitude = u64::from_str_radix(digits, radix)
+		.map_err(|_| format!("Invalid integer literal: {}", text))?;
+
+	if negative {
+		let maximum_magnitude = (i64::MAX as u64) + 1;
+
+		if magnitude > maximum_magnitude {
+			return Err(format!("Signed integer literal is too small: {}", text));
+		}
+
+		if magnitude == maximum_magnitude {
+			Ok(IntegerLiteral::Signed(i64::MIN))
+		} else {
+			Ok(IntegerLiteral::Signed(-(magnitude as i64)))
+		}
+	} else {
+		Ok(IntegerLiteral::Unsigned(magnitude))
 	}
 }
 
@@ -83,7 +132,7 @@ fn emit_instruction(program: &mut Vec<u8>, instruction: &AssemblyInstruction) {
 	match instruction {
 		AssemblyInstruction::Push(push_value) => {
 			match push_value {
-				PushValue::Unsigned(unsigned_value) => {
+				IntegerLiteral::Unsigned(unsigned_value) => {
 					if *unsigned_value <= (PUSH_UNSIGNED4_END - PUSH_UNSIGNED4_START) as u64 {
 						program.push(PUSH_UNSIGNED4_START + *unsigned_value as u8);
 					} else if *unsigned_value <= u8::MAX as u64 {
@@ -101,7 +150,7 @@ fn emit_instruction(program: &mut Vec<u8>, instruction: &AssemblyInstruction) {
 					}
 				}
 
-				PushValue::Signed(signed_value) => {
+				IntegerLiteral::Signed(signed_value) => {
 					let signed4_mask = PUSH_SIGNED4_END - PUSH_SIGNED4_START;
 					let signed4_count = (signed4_mask + 1) as i64;
 					let signed4_half = signed4_count / 2;
