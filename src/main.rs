@@ -68,7 +68,7 @@ fn main() {
 		0xE0, 0x14,                   // PUSH8  20
 		0xE1, 0xE8, 0x03,             // PUSH16 1000
 		0xE2, 0x40, 0x42, 0x0F, 0x00, // PUSH32 1,000,000
-		0xD0,                         // HALT, padding
+		0xFF,                         // HALT
 	];
 
 	let mut stack: Vec<Word> = Vec::with_capacity(1 << 12);
@@ -161,8 +161,13 @@ fn main() {
 				stack.push((a >> shift) as Word);
 			}
 
-			OpcodeNibble::Halt => {
-				break;
+			OpcodeNibble::Dup => {
+				let value = *stack.last().expect("Stack underflow");
+				stack.push(value);
+			}
+
+			OpcodeNibble::Drop => {
+				stack.pop().expect("Stack underflow");
 			}
 
 			OpcodeNibble::Ext1 => {
@@ -243,6 +248,10 @@ fn main() {
 						let a = stack.pop().expect("Stack underflow") as i64;
 
 						stack.push(if a < b { 1 } else { 0 });
+					}
+
+					Ext2OpcodeNibble::Halt => {
+						break;
 					}
 				}
 			}

@@ -15,7 +15,8 @@ pub enum OpcodeNibble {
 	ShiftLeft       = 0x9,
 	LogicShiftRight = 0xA,
 	ArithShiftRight = 0xB,
-	Halt            = 0xD,
+	Dup             = 0xC,
+	Drop            = 0xD,
 	Ext1            = 0xE,
 	Ext2            = 0xF,
 }
@@ -36,4 +37,5 @@ pub enum Ext1OpcodeNibble {
 pub enum Ext2OpcodeNibble {
 	CompLessThanUnsigned = 0x0,
 	CompLessThanSigned   = 0x1,
+	Halt                 = 0xF,
 }
