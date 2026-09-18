@@ -37,10 +37,13 @@ enum RelativeInstructionKind {
 
 enum AssemblyInstruction {
 	Push(IntegerLiteral),
+	PushAddress(String),
 	Add,
 	Sub,
 	Halt,
 	Return,
+	JumpIndirect,
+	CallIndirect,
 	Relative {
 		kind: RelativeInstructionKind,
 		label_name: String,
@@ -128,6 +131,18 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			Ok(AssemblyInstruction::Push(integer_literal))
 		}
 
+		"PUSHADR" => {
+			if parts.len() != 2 {
+				return Err("PUSHADR expects exactly one operand".to_string());
+			}
+
+			let label_name = parts[1];
+
+			validate_label_name(label_name)?;
+
+			Ok(AssemblyInstruction::PushAddress(label_name.to_string()))
+		}
+
 		"ADD" => {
 			if parts.len() != 1 {
 				return Err("ADD does not take any operands".to_string());
@@ -198,6 +213,22 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			}
 
 			Ok(AssemblyInstruction::Return)
+		}
+
+		"JMPIND" => {
+			if parts.len() != 1 {
+				return Err("JMPIND does not take any operands".to_string());
+			}
+
+			Ok(AssemblyInstruction::JumpIndirect)
+		}
+
+		"CALLIND" => {
+			if parts.len() != 1 {
+				return Err("CALLIND does not take any operands".to_string());
+			}
+
+			Ok(AssemblyInstruction::CallIndirect)
 		}
 
 		"HALT" => {
@@ -338,6 +369,18 @@ fn emit_instruction(
 			}
 		}
 
+		AssemblyInstruction::PushAddress(label_name) => {
+			let target_address = *labels
+				.get(label_name)
+				.ok_or_else(|| format!("unknown label: {}", label_name))?;
+
+			let target_address = u64::try_from(target_address)
+				.map_err(|_| format!("label address is too large: {}", label_name))?;
+
+			program.push(OpcodeByte::Push64 as u8);
+			program.extend_from_slice(&target_address.to_le_bytes());
+		}
+
 		AssemblyInstruction::Add => {
 			program.push(OpcodeByte::Add as u8);
 		}
@@ -348,6 +391,14 @@ fn emit_instruction(
 
 		AssemblyInstruction::Return => {
 			program.push(OpcodeByte::Return as u8);
+		}
+
+		AssemblyInstruction::JumpIndirect => {
+			program.push(OpcodeByte::JumpAbsIndirect as u8);
+		}
+
+		AssemblyInstruction::CallIndirect => {
+			program.push(OpcodeByte::CallAbsIndirect as u8);
 		}
 
 		AssemblyInstruction::Relative {
@@ -466,7 +517,11 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 		AssemblyInstruction::Add
 			| AssemblyInstruction::Sub
 			| AssemblyInstruction::Halt
-			| AssemblyInstruction::Return => 1,
+			| AssemblyInstruction::Return
+			| AssemblyInstruction::JumpIndirect
+			| AssemblyInstruction::CallIndirect => 1,
+		
+		AssemblyInstruction::PushAddress(_) => 9,
 
 		AssemblyInstruction::Relative { width, .. } => {
 			relative_width_instruction_size(*width)
