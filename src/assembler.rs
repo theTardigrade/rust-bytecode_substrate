@@ -86,7 +86,10 @@ fn parse_source(source: &str) -> Result<Vec<AssemblyItem>, String> {
 	let mut items = Vec::new();
 
 	for line in source.lines() {
-		let line = line.trim();
+		let line = line
+			.split_once(';')
+			.map_or(line, |(before_comment, _)| before_comment)
+			.trim();
 
 		if line.is_empty() {
 			continue;
@@ -94,11 +97,9 @@ fn parse_source(source: &str) -> Result<Vec<AssemblyItem>, String> {
 
 		if line.ends_with(':') {
 			let label_name = parse_label(line)?;
-
 			items.push(AssemblyItem::Label(label_name));
 		} else {
 			let instruction = parse_instruction(line)?;
-
 			items.push(AssemblyItem::Instruction(instruction));
 		}
 	}
