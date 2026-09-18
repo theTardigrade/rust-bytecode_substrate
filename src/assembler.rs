@@ -36,10 +36,15 @@ enum RelativeInstructionKind {
 }
 
 enum AssemblyInstruction {
+	Noop,
 	Push(IntegerLiteral),
 	PushAddress(String),
 	Add,
 	Sub,
+	Mul,
+	Dup,
+	Drop,
+	Swap,
 	Halt,
 	Return,
 	JumpIndirect,
@@ -111,6 +116,24 @@ fn parse_source(source: &str) -> Result<Vec<AssemblyItem>, String> {
 	Ok(items)
 }
 
+fn expect_operand_count(
+	parts: &[&str],
+	expected_operand_count: usize,
+	mnemonic: &str,
+) -> Result<(), String> {
+	let actual_operand_count = parts.len() - 1;
+
+	if actual_operand_count != expected_operand_count {
+		return Err(match expected_operand_count {
+			0 => format!("{} does not take any operands", mnemonic),
+			1 => format!("{} expects exactly one operand", mnemonic),
+			count => format!("{} expects exactly {} operands", mnemonic, count),
+		});
+	}
+
+	Ok(())
+}
+
 fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 	let parts: Vec<&str> = line.split_whitespace().collect();
 
@@ -121,10 +144,38 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 	let mnemonic = parts[0].to_ascii_uppercase();
 
 	match mnemonic.as_str() {
+		"NOOP" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::Noop)
+		}
+
+		"MUL" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::Mul)
+		}
+
+		"DUP" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::Dup)
+		}
+
+		"DROP" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::Drop)
+		}
+
+		"SWAP" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::Swap)
+		}
+
 		"PUSH" => {
-			if parts.len() != 2 {
-				return Err("PUSH expects exactly one operand".to_string());
-			}
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
 			let integer_literal = parse_integer_literal(parts[1])?;
 
@@ -132,9 +183,7 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 		}
 
 		"PADDR" => {
-			if parts.len() != 2 {
-				return Err("PADDR expects exactly one operand".to_string());
-			}
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
 			let label_name = parts[1];
 
@@ -144,25 +193,19 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 		}
 
 		"ADD" => {
-			if parts.len() != 1 {
-				return Err("ADD does not take any operands".to_string());
-			}
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Add)
 		}
 
 		"SUB" => {
-			if parts.len() != 1 {
-				return Err("SUB does not take any operands".to_string());
-			}
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Sub)
 		}
 
 		"JMP" => {
-			if parts.len() != 2 {
-				return Err("JMP expects exactly one operand".to_string());
-			}
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
 			let label_name = parts[1];
 
@@ -176,9 +219,7 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 		}
 
 		"JZ" => {
-			if parts.len() != 2 {
-				return Err("JZ expects exactly one operand".to_string());
-			}
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
 			let label_name = parts[1];
 
@@ -192,9 +233,7 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 		}
 
 		"CALL" => {
-			if parts.len() != 2 {
-				return Err("CALL expects exactly one operand".to_string());
-			}
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
 			let label_name = parts[1];
 
@@ -208,33 +247,25 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 		}
 
 		"RET" => {
-			if parts.len() != 1 {
-				return Err("RET does not take any operands".to_string());
-			}
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Return)
 		}
 
 		"JMPIND" => {
-			if parts.len() != 1 {
-				return Err("JMPIND does not take any operands".to_string());
-			}
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::JumpIndirect)
 		}
 
 		"CALLIND" => {
-			if parts.len() != 1 {
-				return Err("CALLIND does not take any operands".to_string());
-			}
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::CallIndirect)
 		}
 
 		"HALT" => {
-			if parts.len() != 1 {
-				return Err("HALT does not take any operands".to_string());
-			}
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Halt)
 		}
@@ -401,6 +432,26 @@ fn emit_instruction(
 			program.push(OpcodeByte::CallAbsIndirect as u8);
 		}
 
+		AssemblyInstruction::Noop => {
+			program.push(OpcodeByte::Noop as u8);
+		}
+
+		AssemblyInstruction::Mul => {
+			program.push(OpcodeByte::Mul as u8);
+		}
+
+		AssemblyInstruction::Dup => {
+			program.push(OpcodeByte::Dup as u8);
+		}
+
+		AssemblyInstruction::Drop => {
+			program.push(OpcodeByte::Drop as u8);
+		}
+
+		AssemblyInstruction::Swap => {
+			program.push(OpcodeByte::Swap as u8);
+		}
+
 		AssemblyInstruction::Relative {
 			kind,
 			label_name,
@@ -514,8 +565,13 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			integer_literal_push_size(integer_literal)
 		}
 
-		AssemblyInstruction::Add
+		AssemblyInstruction::Noop
+			| AssemblyInstruction::Add
 			| AssemblyInstruction::Sub
+			| AssemblyInstruction::Mul
+			| AssemblyInstruction::Dup
+			| AssemblyInstruction::Drop
+			| AssemblyInstruction::Swap
 			| AssemblyInstruction::Halt
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
