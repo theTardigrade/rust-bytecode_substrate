@@ -131,9 +131,9 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			Ok(AssemblyInstruction::Push(integer_literal))
 		}
 
-		"PUSHADR" => {
+		"PADDR" => {
 			if parts.len() != 2 {
-				return Err("PUSHADR expects exactly one operand".to_string());
+				return Err("PADDR expects exactly one operand".to_string());
 			}
 
 			let label_name = parts[1];
