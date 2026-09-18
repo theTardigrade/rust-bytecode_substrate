@@ -4,21 +4,14 @@ mod assembler;
 
 fn main() {
 	let source = r#"
-		JMP finished
-
-		PUSH 0
-		PUSH 0
-		PUSH 0
-		PUSH 0
-		PUSH 0
-		PUSH 0
-		PUSH 0
-		PUSH 0
-		PUSH 0
-
-	finished:
-		PUSH 99
+		CALL function
+		PUSH 2
+		ADD
 		HALT
+
+		function:
+			PUSH 40
+			RET
 	"#;
 
 	let program = assembler::assemble(source)

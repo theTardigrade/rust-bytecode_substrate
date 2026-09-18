@@ -40,6 +40,7 @@ enum AssemblyInstruction {
 	Add,
 	Sub,
 	Halt,
+	Return,
 	Relative {
 		kind: RelativeInstructionKind,
 		label_name: String,
@@ -191,6 +192,14 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			})
 		}
 
+		"RET" => {
+			if parts.len() != 1 {
+				return Err("RET does not take any operands".to_string());
+			}
+
+			Ok(AssemblyInstruction::Return)
+		}
+
 		"HALT" => {
 			if parts.len() != 1 {
 				return Err("HALT does not take any operands".to_string());
@@ -337,6 +346,10 @@ fn emit_instruction(
 			program.push(OpcodeByte::Sub as u8);
 		}
 
+		AssemblyInstruction::Return => {
+			program.push(OpcodeByte::Return as u8);
+		}
+
 		AssemblyInstruction::Relative {
 			kind,
 			label_name,
@@ -450,9 +463,10 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			integer_literal_push_size(integer_literal)
 		}
 
-		AssemblyInstruction::Add => 1,
-		AssemblyInstruction::Sub => 1,
-		AssemblyInstruction::Halt => 1,
+		AssemblyInstruction::Add
+			| AssemblyInstruction::Sub
+			| AssemblyInstruction::Halt
+			| AssemblyInstruction::Return => 1,
 
 		AssemblyInstruction::Relative { width, .. } => {
 			relative_width_instruction_size(*width)
