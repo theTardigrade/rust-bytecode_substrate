@@ -8,7 +8,7 @@ NOOP
 ; Allocate 16 bytes of linear memory.
 PUSH 16
 MEMGROW
-DROP
+POP
 
 ; Check that memory is now 16 bytes long.
 MEMSIZE
@@ -96,7 +96,7 @@ arithmetic_test:
 	DUP
 	PUSH 5
 	REMU                ; 42 % 5 = 2
-	DROP                ; discard the remainder
+	POP                ; discard the remainder
 
 	PUSH 0
 	SWAP

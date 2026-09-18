@@ -313,7 +313,7 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				stack.push(value);
 			}
 
-			OpcodeByte::Drop => {
+			OpcodeByte::Pop => {
 				pop_word(&mut stack);
 			}
 

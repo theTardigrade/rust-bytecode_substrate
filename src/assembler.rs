@@ -206,7 +206,7 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			Ok(AssemblyInstruction::Dup)
 		}
 
-		"DROP" => {
+		"POP" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Drop)
@@ -749,7 +749,7 @@ fn emit_instruction(
 		}
 
 		AssemblyInstruction::Drop => {
-			program.push(OpcodeByte::Drop as u8);
+			program.push(OpcodeByte::Pop as u8);
 		}
 
 		AssemblyInstruction::Swap => {

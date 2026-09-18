@@ -39,7 +39,7 @@ pub enum OpcodeByte {
 	ArithShiftRight                = 0x0E,
 
 	Dup                            = 0x0F,
-	Drop                           = 0x10,
+	Pop                            = 0x10,
 	Swap                           = 0x11,
 
 	PushUnsigned8                  = 0x12,
@@ -49,6 +49,7 @@ pub enum OpcodeByte {
 	PushUnsigned32                 = 0x16,
 	PushSigned32                   = 0x17,
 	Push64                         = 0x18,
+
 
 	CompEqual                      = 0x19,
 	CompNotEqual                   = 0x1A,
