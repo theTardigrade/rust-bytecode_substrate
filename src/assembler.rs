@@ -58,6 +58,17 @@ enum AssemblyInstruction {
 	LogicShiftRight,
 	ArithShiftRight,
 
+	CompEqual,
+	CompNotEqual,
+	CompLessThanUnsigned,
+	CompLessThanSigned,
+	CompLessThanOrEqualUnsigned,
+	CompLessThanOrEqualSigned,
+	CompGreaterThanUnsigned,
+	CompGreaterThanSigned,
+	CompGreaterThanOrEqualUnsigned,
+	CompGreaterThanOrEqualSigned,
+
 	Dup,
 	Drop,
 	Swap,
@@ -286,6 +297,56 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::ArithShiftRight)
+		}
+
+		"CEQ" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompEqual)
+		}
+
+		"CNE" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompNotEqual)
+		}
+
+		"CLTU" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompLessThanUnsigned)
+		}
+
+		"CLTS" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompLessThanSigned)
+		}
+
+		"CLEU" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompLessThanOrEqualUnsigned)
+		}
+
+		"CLES" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompLessThanOrEqualSigned)
+		}
+
+		"CGTU" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompGreaterThanUnsigned)
+		}
+
+		"CGTS" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompGreaterThanSigned)
+		}
+
+		"CGEU" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompGreaterThanOrEqualUnsigned)
+		}
+
+		"CGES" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::CompGreaterThanOrEqualSigned)
 		}
 
 		"JMP" => {
@@ -548,6 +609,46 @@ fn emit_instruction(
 			program.push(OpcodeByte::ArithShiftRight as u8);
 		}
 
+		AssemblyInstruction::CompEqual => {
+			program.push(OpcodeByte::CompEqual as u8);
+		}
+
+		AssemblyInstruction::CompNotEqual => {
+			program.push(OpcodeByte::CompNotEqual as u8);
+		}
+
+		AssemblyInstruction::CompLessThanUnsigned => {
+			program.push(OpcodeByte::CompLessThanUnsigned as u8);
+		}
+
+		AssemblyInstruction::CompLessThanSigned => {
+			program.push(OpcodeByte::CompLessThanSigned as u8);
+		}
+
+		AssemblyInstruction::CompLessThanOrEqualUnsigned => {
+			program.push(OpcodeByte::CompLessThanOrEqualUnsigned as u8);
+		}
+
+		AssemblyInstruction::CompLessThanOrEqualSigned => {
+			program.push(OpcodeByte::CompLessThanOrEqualSigned as u8);
+		}
+
+		AssemblyInstruction::CompGreaterThanUnsigned => {
+			program.push(OpcodeByte::CompGreaterThanUnsigned as u8);
+		}
+
+		AssemblyInstruction::CompGreaterThanSigned => {
+			program.push(OpcodeByte::CompGreaterThanSigned as u8);
+		}
+
+		AssemblyInstruction::CompGreaterThanOrEqualUnsigned => {
+			program.push(OpcodeByte::CompGreaterThanOrEqualUnsigned as u8);
+		}
+
+		AssemblyInstruction::CompGreaterThanOrEqualSigned => {
+			program.push(OpcodeByte::CompGreaterThanOrEqualSigned as u8);
+		}
+
 		AssemblyInstruction::Return => {
 			program.push(OpcodeByte::Return as u8);
 		}
@@ -712,6 +813,16 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::Drop
 			| AssemblyInstruction::Swap
 			| AssemblyInstruction::Halt
+			| AssemblyInstruction::CompEqual
+			| AssemblyInstruction::CompNotEqual
+			| AssemblyInstruction::CompLessThanUnsigned
+			| AssemblyInstruction::CompLessThanSigned
+			| AssemblyInstruction::CompLessThanOrEqualUnsigned
+			| AssemblyInstruction::CompLessThanOrEqualSigned
+			| AssemblyInstruction::CompGreaterThanUnsigned
+			| AssemblyInstruction::CompGreaterThanSigned
+			| AssemblyInstruction::CompGreaterThanOrEqualUnsigned
+			| AssemblyInstruction::CompGreaterThanOrEqualSigned
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
 			| AssemblyInstruction::CallIndirect => 1,
