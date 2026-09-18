@@ -37,18 +37,36 @@ enum RelativeInstructionKind {
 
 enum AssemblyInstruction {
 	Noop,
+
 	Push(IntegerLiteral),
 	PushAddress(String),
+
 	Add,
 	Sub,
 	Mul,
+	DivUnsigned,
+	DivSigned,
+	RemUnsigned,
+	RemSigned,
+
+	BitAnd,
+	BitOr,
+	BitXor,
+	BitNot,
+
+	ShiftLeft,
+	LogicShiftRight,
+	ArithShiftRight,
+
 	Dup,
 	Drop,
 	Swap,
+
 	Halt,
 	Return,
 	JumpIndirect,
 	CallIndirect,
+
 	Relative {
 		kind: RelativeInstructionKind,
 		label_name: String,
@@ -202,6 +220,72 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Sub)
+		}
+
+		"DIVU" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::DivUnsigned)
+		}
+
+		"DIVS" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::DivSigned)
+		}
+
+		"REMU" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::RemUnsigned)
+		}
+
+		"REMS" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::RemSigned)
+		}
+
+		"AND" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::BitAnd)
+		}
+
+		"OR" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::BitOr)
+		}
+
+		"XOR" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::BitXor)
+		}
+
+		"NOT" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::BitNot)
+		}
+
+		"SL" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::ShiftLeft)
+		}
+
+		"LSR" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::LogicShiftRight)
+		}
+
+		"ASR" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::ArithShiftRight)
 		}
 
 		"JMP" => {
@@ -420,6 +504,50 @@ fn emit_instruction(
 			program.push(OpcodeByte::Sub as u8);
 		}
 
+		AssemblyInstruction::DivUnsigned => {
+			program.push(OpcodeByte::DivUnsigned as u8);
+		}
+
+		AssemblyInstruction::DivSigned => {
+			program.push(OpcodeByte::DivSigned as u8);
+		}
+
+		AssemblyInstruction::RemUnsigned => {
+			program.push(OpcodeByte::RemUnsigned as u8);
+		}
+
+		AssemblyInstruction::RemSigned => {
+			program.push(OpcodeByte::RemSigned as u8);
+		}
+
+		AssemblyInstruction::BitAnd => {
+			program.push(OpcodeByte::BitAnd as u8);
+		}
+
+		AssemblyInstruction::BitOr => {
+			program.push(OpcodeByte::BitOr as u8);
+		}
+
+		AssemblyInstruction::BitXor => {
+			program.push(OpcodeByte::BitXor as u8);
+		}
+
+		AssemblyInstruction::BitNot => {
+			program.push(OpcodeByte::BitNot as u8);
+		}
+
+		AssemblyInstruction::ShiftLeft => {
+			program.push(OpcodeByte::ShiftLeft as u8);
+		}
+
+		AssemblyInstruction::LogicShiftRight => {
+			program.push(OpcodeByte::LogicShiftRight as u8);
+		}
+
+		AssemblyInstruction::ArithShiftRight => {
+			program.push(OpcodeByte::ArithShiftRight as u8);
+		}
+
 		AssemblyInstruction::Return => {
 			program.push(OpcodeByte::Return as u8);
 		}
@@ -569,6 +697,17 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::Add
 			| AssemblyInstruction::Sub
 			| AssemblyInstruction::Mul
+			| AssemblyInstruction::DivUnsigned
+			| AssemblyInstruction::DivSigned
+			| AssemblyInstruction::RemUnsigned
+			| AssemblyInstruction::RemSigned
+			| AssemblyInstruction::BitAnd
+			| AssemblyInstruction::BitOr
+			| AssemblyInstruction::BitXor
+			| AssemblyInstruction::BitNot
+			| AssemblyInstruction::ShiftLeft
+			| AssemblyInstruction::LogicShiftRight
+			| AssemblyInstruction::ArithShiftRight
 			| AssemblyInstruction::Dup
 			| AssemblyInstruction::Drop
 			| AssemblyInstruction::Swap
