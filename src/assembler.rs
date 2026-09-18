@@ -78,6 +78,21 @@ enum AssemblyInstruction {
 	JumpIndirect,
 	CallIndirect,
 
+	MemLoad8,
+	MemLoad16,
+	MemLoad32,
+	MemLoad64,
+
+	MemStore8,
+	MemStore16,
+	MemStore32,
+	MemStore64,
+
+	MemSize,
+	MemGrow,
+	MemCopy8,
+	MemFill8,
+
 	Relative {
 		kind: RelativeInstructionKind,
 		label_name: String,
@@ -409,6 +424,66 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			Ok(AssemblyInstruction::CallIndirect)
 		}
 
+		"MEMLD8" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemLoad8)
+		}
+
+		"MEMLD16" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemLoad16)
+		}
+
+		"MEMLD32" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemLoad32)
+		}
+
+		"MEMLD64" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemLoad64)
+		}
+
+		"MEMST8" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore8)
+		}
+
+		"MEMST16" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore16)
+		}
+
+		"MEMST32" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore32)
+		}
+
+		"MEMST64" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore64)
+		}
+
+		"MEMSIZE" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemSize)
+		}
+
+		"MEMGROW" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemGrow)
+		}
+
+		"MEMCOPY8" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemCopy8)
+		}
+
+		"MEMFILL8" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemFill8)
+		}
+
 		"HALT" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
@@ -681,6 +756,54 @@ fn emit_instruction(
 			program.push(OpcodeByte::Swap as u8);
 		}
 
+		AssemblyInstruction::MemLoad8 => {
+			program.push(OpcodeByte::MemLoad8 as u8);
+		}
+
+		AssemblyInstruction::MemLoad16 => {
+			program.push(OpcodeByte::MemLoad16 as u8);
+		}
+
+		AssemblyInstruction::MemLoad32 => {
+			program.push(OpcodeByte::MemLoad32 as u8);
+		}
+
+		AssemblyInstruction::MemLoad64 => {
+			program.push(OpcodeByte::MemLoad64 as u8);
+		}
+
+		AssemblyInstruction::MemStore8 => {
+			program.push(OpcodeByte::MemStore8 as u8);
+		}
+
+		AssemblyInstruction::MemStore16 => {
+			program.push(OpcodeByte::MemStore16 as u8);
+		}
+
+		AssemblyInstruction::MemStore32 => {
+			program.push(OpcodeByte::MemStore32 as u8);
+		}
+
+		AssemblyInstruction::MemStore64 => {
+			program.push(OpcodeByte::MemStore64 as u8);
+		}
+
+		AssemblyInstruction::MemSize => {
+			program.push(OpcodeByte::MemSize as u8);
+		}
+
+		AssemblyInstruction::MemGrow => {
+			program.push(OpcodeByte::MemGrow as u8);
+		}
+
+		AssemblyInstruction::MemCopy8 => {
+			program.push(OpcodeByte::MemCopy8 as u8);
+		}
+
+		AssemblyInstruction::MemFill8 => {
+			program.push(OpcodeByte::MemFill8 as u8);
+		}
+
 		AssemblyInstruction::Relative {
 			kind,
 			label_name,
@@ -823,6 +946,18 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::CompGreaterThanSigned
 			| AssemblyInstruction::CompGreaterThanOrEqualUnsigned
 			| AssemblyInstruction::CompGreaterThanOrEqualSigned
+			| AssemblyInstruction::MemLoad8
+			| AssemblyInstruction::MemLoad16
+			| AssemblyInstruction::MemLoad32
+			| AssemblyInstruction::MemLoad64
+			| AssemblyInstruction::MemStore8
+			| AssemblyInstruction::MemStore16
+			| AssemblyInstruction::MemStore32
+			| AssemblyInstruction::MemStore64
+			| AssemblyInstruction::MemSize
+			| AssemblyInstruction::MemGrow
+			| AssemblyInstruction::MemCopy8
+			| AssemblyInstruction::MemFill8
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
 			| AssemblyInstruction::CallIndirect => 1,
