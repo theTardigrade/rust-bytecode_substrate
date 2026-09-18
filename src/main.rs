@@ -3,21 +3,30 @@ mod vm;
 mod assembler;
 
 fn main() {
-	println!("running: language substrate VM");
-
-
 	let source = r#"
-		PUSH 10
-		PUSH 20
-		ADD
+		JMP finished
+
+		PUSH 0
+		PUSH 0
+		PUSH 0
+		PUSH 0
+		PUSH 0
+		PUSH 0
+		PUSH 0
+		PUSH 0
+		PUSH 0
+
+	finished:
+		PUSH 99
 		HALT
 	"#;
 
-	let program = assembler::assemble(source).expect("Assembly failed");
+	let program = assembler::assemble(source)
+		.expect("assembly failed");
 
-	println!("bytecode: {:02X?}", program);
+	println!("Bytecode: {:02X?}", program);
 
 	let stack = vm::run_program(&program);
 
-	println!("stack: {:?}", stack);
+	println!("Stack: {:?}", stack);
 }

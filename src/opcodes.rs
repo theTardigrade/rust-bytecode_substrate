@@ -93,7 +93,7 @@ pub enum OpcodeByte {
 	MemSize                        = 0x3A,
 	MemGrow                        = 0x3B,
 	MemCopy8                       = 0x3C,
-	MemFill8                       = 0x3D,
+	MemFill8                       = 0x3D, // maybe add MemZeroFill later
 
 	// 0x3E–0x8F currently free
 
