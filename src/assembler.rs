@@ -8,6 +8,10 @@ use crate::opcodes::{
 	PUSH_SIGNED4_END,
 	JUMP_REL_SIGNED4_START,
 	JUMP_REL_SIGNED4_END,
+	CALL_REL_SIGNED4_START,
+	CALL_REL_SIGNED4_END,
+	JUMP_IF_ZERO_REL_SIGNED4_START,
+	JUMP_IF_ZERO_REL_SIGNED4_END,
 };
 
 enum IntegerLiteral {
@@ -24,12 +28,20 @@ enum RelativeWidth {
 	Signed64,
 }
 
+#[derive(Clone, Copy)]
+enum RelativeInstructionKind {
+	Jump,
+	JumpIfZero,
+	Call,
+}
+
 enum AssemblyInstruction {
 	Push(IntegerLiteral),
 	Add,
 	Sub,
 	Halt,
-	Jump {
+	Relative {
+		kind: RelativeInstructionKind,
 		label_name: String,
 		width: RelativeWidth,
 	},
@@ -139,7 +151,40 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 
 			validate_label_name(label_name)?;
 
-			Ok(AssemblyInstruction::Jump {
+			Ok(AssemblyInstruction::Relative {
+				kind: RelativeInstructionKind::Jump,
+				label_name: label_name.to_string(),
+				width: RelativeWidth::Signed4,
+			})
+		}
+
+		"JZ" => {
+			if parts.len() != 2 {
+				return Err("JZ expects exactly one operand".to_string());
+			}
+
+			let label_name = parts[1];
+
+			validate_label_name(label_name)?;
+
+			Ok(AssemblyInstruction::Relative {
+				kind: RelativeInstructionKind::JumpIfZero,
+				label_name: label_name.to_string(),
+				width: RelativeWidth::Signed4,
+			})
+		}
+
+		"CALL" => {
+			if parts.len() != 2 {
+				return Err("CALL expects exactly one operand".to_string());
+			}
+
+			let label_name = parts[1];
+
+			validate_label_name(label_name)?;
+
+			Ok(AssemblyInstruction::Relative {
+				kind: RelativeInstructionKind::Call,
 				label_name: label_name.to_string(),
 				width: RelativeWidth::Signed4,
 			})
@@ -291,7 +336,8 @@ fn emit_instruction(
 			program.push(OpcodeByte::Sub as u8);
 		}
 
-		AssemblyInstruction::Jump {
+		AssemblyInstruction::Relative {
+			kind,
 			label_name,
 			width,
 		} => {
@@ -306,46 +352,84 @@ fn emit_instruction(
 
 			let offset = target_address as i128 - next_instruction_address as i128;
 
-			match width {
+			match *width {
 				RelativeWidth::Signed4 => {
 					let offset = i8::try_from(offset)
-						.expect("relaxed signed4 jump offset should fit in i8");
+						.expect("relaxed signed4 relative offset should fit in i8");
 
-					let signed4_mask = JUMP_REL_SIGNED4_END - JUMP_REL_SIGNED4_START;
+					let (opcode_start, opcode_end) = match *kind {
+						RelativeInstructionKind::Jump => {
+							(JUMP_REL_SIGNED4_START, JUMP_REL_SIGNED4_END)
+						}
+
+						RelativeInstructionKind::JumpIfZero => {
+							(JUMP_IF_ZERO_REL_SIGNED4_START, JUMP_IF_ZERO_REL_SIGNED4_END)
+						}
+
+						RelativeInstructionKind::Call => {
+							(CALL_REL_SIGNED4_START, CALL_REL_SIGNED4_END)
+						}
+					};
+
+					let signed4_mask = opcode_end - opcode_start;
 					let encoded_offset = (offset as u8) & signed4_mask;
 
-					program.push(JUMP_REL_SIGNED4_START + encoded_offset);
+					program.push(opcode_start + encoded_offset);
 				}
 
 				RelativeWidth::Signed8 => {
 					let offset = i8::try_from(offset)
-						.expect("relaxed signed8 jump offset should fit in i8");
+						.expect("relaxed signed8 relative offset should fit in i8");
 
-					program.push(OpcodeByte::JumpRelSigned8 as u8);
+					let opcode = match *kind {
+						RelativeInstructionKind::Jump => OpcodeByte::JumpRelSigned8,
+						RelativeInstructionKind::JumpIfZero => OpcodeByte::JumpIfZeroRelSigned8,
+						RelativeInstructionKind::Call => OpcodeByte::CallRelSigned8,
+					};
+
+					program.push(opcode as u8);
 					program.push(offset as u8);
 				}
 
 				RelativeWidth::Signed16 => {
 					let offset = i16::try_from(offset)
-						.expect("relaxed signed16 jump offset should fit in i16");
+						.expect("relaxed signed16 relative offset should fit in i16");
 
-					program.push(OpcodeByte::JumpRelSigned16 as u8);
+					let opcode = match *kind {
+						RelativeInstructionKind::Jump => OpcodeByte::JumpRelSigned16,
+						RelativeInstructionKind::JumpIfZero => OpcodeByte::JumpIfZeroRelSigned16,
+						RelativeInstructionKind::Call => OpcodeByte::CallRelSigned16,
+					};
+
+					program.push(opcode as u8);
 					program.extend_from_slice(&offset.to_le_bytes());
 				}
 
 				RelativeWidth::Signed32 => {
 					let offset = i32::try_from(offset)
-						.expect("relaxed signed32 jump offset should fit in i32");
+						.expect("relaxed signed32 relative offset should fit in i32");
 
-					program.push(OpcodeByte::JumpRelSigned32 as u8);
+					let opcode = match *kind {
+						RelativeInstructionKind::Jump => OpcodeByte::JumpRelSigned32,
+						RelativeInstructionKind::JumpIfZero => OpcodeByte::JumpIfZeroRelSigned32,
+						RelativeInstructionKind::Call => OpcodeByte::CallRelSigned32,
+					};
+
+					program.push(opcode as u8);
 					program.extend_from_slice(&offset.to_le_bytes());
 				}
 
 				RelativeWidth::Signed64 => {
 					let offset = i64::try_from(offset)
-						.expect("relaxed signed64 jump offset should fit in i64");
+						.expect("relaxed signed64 relative offset should fit in i64");
 
-					program.push(OpcodeByte::JumpRelSigned64 as u8);
+					let opcode = match *kind {
+						RelativeInstructionKind::Jump => OpcodeByte::JumpRelSigned64,
+						RelativeInstructionKind::JumpIfZero => OpcodeByte::JumpIfZeroRelSigned64,
+						RelativeInstructionKind::Call => OpcodeByte::CallRelSigned64,
+					};
+
+					program.push(opcode as u8);
 					program.extend_from_slice(&offset.to_le_bytes());
 				}
 			}
@@ -369,7 +453,7 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 		AssemblyInstruction::Sub => 1,
 		AssemblyInstruction::Halt => 1,
 
-		AssemblyInstruction::Jump { width, .. } => {
+		AssemblyInstruction::Relative { width, .. } => {
 			relative_width_instruction_size(*width)
 		}
 	}
@@ -416,11 +500,12 @@ fn relax_relative_instructions(items: &mut [AssemblyItem]) -> Result<(), String>
 				AssemblyItem::Label(_) => {}
 
 				AssemblyItem::Instruction(instruction) => {
-					let instruction_size = instruction_size(&instruction);
+					let instruction_size = instruction_size(&*instruction);
 
-					if let AssemblyInstruction::Jump {
+					if let AssemblyInstruction::Relative {
 						label_name,
 						width,
+						..
 					} = instruction
 					{
 						let target_address = *labels
