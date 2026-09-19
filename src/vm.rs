@@ -1,5 +1,10 @@
 use crate::opcodes::{
 	OpcodeByte,
+	REGISTER_COUNT,
+	REGISTER_GET_START,
+	REGISTER_GET_END,
+	REGISTER_SET_START,
+	REGISTER_SET_END,
 	CALL_REL_SIGNED4_START,
 	CALL_REL_SIGNED4_END,
 	JUMP_IF_ZERO_REL_SIGNED4_START,
@@ -137,10 +142,23 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 	let mut stack: Vec<Word> = Vec::with_capacity(1 << 12);
 	let mut call_stack: Vec<usize> = Vec::with_capacity(1 << 12);
 	let mut memory: Vec<u8> = Vec::new();
+	let mut registers = [0; REGISTER_COUNT];
 	let mut ip: usize = 0;
 
 	loop {
 		let raw_opcode_byte = get_next_byte_from_program(program, &mut ip);
+
+		if (REGISTER_GET_START..=REGISTER_GET_END).contains(&raw_opcode_byte) {
+			let register_index = decode_u4(raw_opcode_byte) as usize;
+			stack.push(registers[register_index]);
+			continue;
+		}
+
+		if (REGISTER_SET_START..=REGISTER_SET_END).contains(&raw_opcode_byte) {
+			let register_index = decode_u4(raw_opcode_byte) as usize;
+			registers[register_index] = pop_word(&mut stack);
+			continue;
+		}
 
 		if (PUSH_UNSIGNED4_START..=PUSH_UNSIGNED4_END).contains(&raw_opcode_byte) {
 			let value = decode_u4(raw_opcode_byte);

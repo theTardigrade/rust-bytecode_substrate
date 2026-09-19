@@ -1,5 +1,13 @@
 use num_enum::TryFromPrimitive;
 
+pub const REGISTER_GET_START: u8 = 0x60;
+pub const REGISTER_GET_END: u8 = 0x6F;
+
+pub const REGISTER_SET_START: u8 = 0x70;
+pub const REGISTER_SET_END: u8 = 0x7F;
+
+pub const REGISTER_COUNT: usize = (REGISTER_GET_END - REGISTER_GET_START + 1) as usize;
+
 pub const PUSH_UNSIGNED4_START: u8 = 0x90;
 pub const PUSH_UNSIGNED4_END: u8 = 0x9F;
 

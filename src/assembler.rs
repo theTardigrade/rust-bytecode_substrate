@@ -11,7 +11,7 @@ use crate::opcodes::{
 	CALL_REL_SIGNED4_START,
 	CALL_REL_SIGNED4_END,
 	JUMP_IF_ZERO_REL_SIGNED4_START,
-	JUMP_IF_ZERO_REL_SIGNED4_END,
+	JUMP_IF_ZERO_REL_SIGNED4_END, REGISTER_COUNT, REGISTER_GET_START, REGISTER_SET_START,
 };
 
 enum IntegerLiteral {
@@ -77,6 +77,9 @@ enum AssemblyInstruction {
 	Return,
 	JumpIndirect,
 	CallIndirect,
+
+	RegisterGet(u8),
+	RegisterSet(u8),
 
 	MemLoad8,
 	MemLoad16,
@@ -424,6 +427,18 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 			Ok(AssemblyInstruction::CallIndirect)
 		}
 
+		"REGGET" => {
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+			
+			Ok(AssemblyInstruction::RegisterGet(parse_register_index(parts[1])?))
+		}
+
+		"REGSET" => {
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+			
+			Ok(AssemblyInstruction::RegisterSet(parse_register_index(parts[1])?))
+		}
+
 		"MEMLD8" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 			Ok(AssemblyInstruction::MemLoad8)
@@ -756,6 +771,14 @@ fn emit_instruction(
 			program.push(OpcodeByte::Swap as u8);
 		}
 
+		AssemblyInstruction::RegisterGet(register_index) => {
+			program.push(REGISTER_GET_START + register_index);
+		}
+
+		AssemblyInstruction::RegisterSet(register_index) => {
+			program.push(REGISTER_SET_START + register_index);
+		}
+
 		AssemblyInstruction::MemLoad8 => {
 			program.push(OpcodeByte::MemLoad8 as u8);
 		}
@@ -946,6 +969,8 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::CompGreaterThanSigned
 			| AssemblyInstruction::CompGreaterThanOrEqualUnsigned
 			| AssemblyInstruction::CompGreaterThanOrEqualSigned
+			| AssemblyInstruction::RegisterGet(_)
+			| AssemblyInstruction::RegisterSet(_)
 			| AssemblyInstruction::MemLoad8
 			| AssemblyInstruction::MemLoad16
 			| AssemblyInstruction::MemLoad32
@@ -1113,4 +1138,25 @@ fn calculate_label_addresses(
 	}
 
 	Ok(labels)
+}
+
+fn parse_register_index(text: &str) -> Result<u8, String> {
+	let literal = parse_integer_literal(text)?;
+
+	let value = match literal {
+		IntegerLiteral::Unsigned(value) => value,
+		IntegerLiteral::Signed(value) if value >= 0 => value as u64,
+		IntegerLiteral::Signed(_) => {
+			return Err("register index cannot be negative".to_string());
+		}
+	};
+
+	if value >= REGISTER_COUNT as u64 {
+		return Err(format!(
+			"register index must be between 0 and {}",
+			REGISTER_COUNT - 1,
+		));
+	}
+
+	Ok(value as u8)
 }
