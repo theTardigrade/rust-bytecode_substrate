@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use crate::data_structures::fenwick::FenwickTree;
 
 use crate::opcodes::{
 	OpcodeByte,
@@ -19,7 +20,7 @@ enum IntegerLiteral {
 	Signed(i64),
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RelativeWidth {
 	Signed4,
 	Signed8,
@@ -35,11 +36,79 @@ enum RelativeInstructionKind {
 	Call,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct LabelId(usize);
+
+struct Label {
+	name: String,
+	instruction_boundary: Option<usize>,
+}
+
+struct LabelTable {
+	labels: Vec<Label>,
+	ids_by_name: HashMap<String, LabelId>,
+}
+
+impl LabelTable {
+	fn new() -> Self {
+		Self {
+			labels: Vec::new(),
+			ids_by_name: HashMap::new(),
+		}
+	}
+
+	fn get_or_create(&mut self, name: &str) -> LabelId {
+		if let Some(label_id) = self.ids_by_name.get(name) {
+			return *label_id;
+		}
+
+		let label_id = LabelId(self.labels.len());
+
+		self.labels.push(Label {
+			name: name.to_string(),
+			instruction_boundary: None,
+		});
+
+		self.ids_by_name.insert(name.to_string(), label_id);
+
+		label_id
+	}
+
+	fn define(
+		&mut self,
+		name: &str,
+		instruction_boundary: usize,
+	) -> Result<LabelId, String> {
+		let label_id = self.get_or_create(name);
+		let label = &mut self.labels[label_id.0];
+
+		if label.instruction_boundary.is_some() {
+			return Err(format!("duplicate label: {}", name));
+		}
+
+		label.instruction_boundary = Some(instruction_boundary);
+
+		Ok(label_id)
+	}
+
+	fn instruction_boundary(&self, label_id: LabelId) -> Result<usize, String> {
+		let label = &self.labels[label_id.0];
+
+		label
+			.instruction_boundary
+			.ok_or_else(|| format!("unknown label: {}", label.name))
+	}
+
+	fn name(&self, label_id: LabelId) -> &str {
+		&self.labels[label_id.0].name
+	}
+}
+
 enum AssemblyInstruction {
 	Noop,
 
 	Push(IntegerLiteral),
-	PushAddress(String),
+	PushAddress(LabelId),
 
 	Add,
 	Sub,
@@ -98,48 +167,59 @@ enum AssemblyInstruction {
 
 	Relative {
 		kind: RelativeInstructionKind,
-		label_name: String,
+		label: LabelId,
 		width: RelativeWidth,
 	},
 }
 
-enum AssemblyItem {
-	Instruction(AssemblyInstruction),
-	Label(String),
+struct AssemblyProgram {
+	instructions: Vec<AssemblyInstruction>,
+	labels: LabelTable,
 }
 
 pub fn assemble(source: &str) -> Result<Vec<u8>, String> {
-	let mut items = parse_source(source)?;
+	let mut assembly_program = parse_source(source)?;
 
-	relax_relative_instructions(&mut items)?;
+	let instruction_sizes: Vec<usize> = assembly_program
+		.instructions
+		.iter()
+		.map(instruction_size)
+		.collect();
 
-	let labels = calculate_label_addresses(&items)?;
-	let program = emit_program(&items, &labels)?;
+	let mut layout = FenwickTree::from_slice(&instruction_sizes);
 
-	Ok(program)
+	relax_relative_instructions(&mut assembly_program, &mut layout)?;
+
+	emit_program(&assembly_program, &layout)
 }
 
 fn emit_program(
-	items: &[AssemblyItem],
-	labels: &HashMap<String, usize>,
+	assembly_program: &AssemblyProgram,
+	layout: &FenwickTree,
 ) -> Result<Vec<u8>, String> {
-	let mut program = Vec::new();
+	let program_size =
+		layout.prefix_sum(assembly_program.instructions.len());
 
-	for item in items {
-		match item {
-			AssemblyItem::Label(_) => {}
+	let mut program = Vec::with_capacity(program_size);
 
-			AssemblyItem::Instruction(instruction) => {
-				emit_instruction(&mut program, instruction, labels)?;
-			}
-		}
+	for (instruction_index, instruction) in
+		assembly_program.instructions.iter().enumerate()
+	{
+		emit_instruction(
+			&mut program,
+			instruction,
+			instruction_index,
+			&assembly_program.labels,
+			layout,
+		)?;
 	}
 
 	Ok(program)
 }
 
-fn parse_source(source: &str) -> Result<Vec<AssemblyItem>, String> {
-	let mut items = Vec::new();
+fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
+	let mut instructions = Vec::new();
+	let mut labels = LabelTable::new();
 
 	for line in source.lines() {
 		let line = line
@@ -153,14 +233,17 @@ fn parse_source(source: &str) -> Result<Vec<AssemblyItem>, String> {
 
 		if line.ends_with(':') {
 			let label_name = parse_label(line)?;
-			items.push(AssemblyItem::Label(label_name));
+			labels.define(&label_name, instructions.len())?;
 		} else {
-			let instruction = parse_instruction(line)?;
-			items.push(AssemblyItem::Instruction(instruction));
+			let instruction = parse_instruction(line, &mut labels)?;
+			instructions.push(instruction);
 		}
 	}
 
-	Ok(items)
+	Ok(AssemblyProgram {
+		instructions,
+		labels,
+	})
 }
 
 fn expect_operand_count(
@@ -181,7 +264,10 @@ fn expect_operand_count(
 	Ok(())
 }
 
-fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
+fn parse_instruction(
+	line: &str,
+	labels: &mut LabelTable,
+) -> Result<AssemblyInstruction, String> {
 	let parts: Vec<&str> = line.split_whitespace().collect();
 
 	if parts.is_empty() {
@@ -236,7 +322,9 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 
 			validate_label_name(label_name)?;
 
-			Ok(AssemblyInstruction::PushAddress(label_name.to_string()))
+			let label = labels.get_or_create(label_name);
+
+			Ok(AssemblyInstruction::PushAddress(label))
 		}
 
 		"ADD" => {
@@ -374,9 +462,11 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 
 			validate_label_name(label_name)?;
 
+			let label = labels.get_or_create(label_name);
+
 			Ok(AssemblyInstruction::Relative {
 				kind: RelativeInstructionKind::Jump,
-				label_name: label_name.to_string(),
+				label,
 				width: RelativeWidth::Signed4,
 			})
 		}
@@ -388,9 +478,11 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 
 			validate_label_name(label_name)?;
 
+			let label = labels.get_or_create(label_name);
+
 			Ok(AssemblyInstruction::Relative {
 				kind: RelativeInstructionKind::JumpIfZero,
-				label_name: label_name.to_string(),
+				label,
 				width: RelativeWidth::Signed4,
 			})
 		}
@@ -402,9 +494,11 @@ fn parse_instruction(line: &str) -> Result<AssemblyInstruction, String> {
 
 			validate_label_name(label_name)?;
 
+			let label = labels.get_or_create(label_name);
+
 			Ok(AssemblyInstruction::Relative {
 				kind: RelativeInstructionKind::Call,
-				label_name: label_name.to_string(),
+				label,
 				width: RelativeWidth::Signed4,
 			})
 		}
@@ -585,7 +679,9 @@ fn parse_integer_literal(text: &str) -> Result<IntegerLiteral, String> {
 fn emit_instruction(
 	program: &mut Vec<u8>,
 	instruction: &AssemblyInstruction,
-	labels: &HashMap<String, usize>,
+	instruction_index: usize,
+	labels: &LabelTable,
+	layout: &FenwickTree,
 ) -> Result<(), String> {
 	match instruction {
 		AssemblyInstruction::Push(integer_literal) => {
@@ -635,13 +731,17 @@ fn emit_instruction(
 			}
 		}
 
-		AssemblyInstruction::PushAddress(label_name) => {
-			let target_address = *labels
-				.get(label_name)
-				.ok_or_else(|| format!("unknown label: {}", label_name))?;
+		AssemblyInstruction::PushAddress(label) => {
+			let target_boundary = labels.instruction_boundary(*label)?;
+			let target_address = layout.prefix_sum(target_boundary);
 
 			let target_address = u64::try_from(target_address)
-				.map_err(|_| format!("label address is too large: {}", label_name))?;
+				.map_err(|_| {
+					format!(
+						"label address is too large: {}",
+						labels.name(*label),
+					)
+				})?;
 
 			program.push(OpcodeByte::Push64 as u8);
 			program.extend_from_slice(&target_address.to_le_bytes());
@@ -829,19 +929,26 @@ fn emit_instruction(
 
 		AssemblyInstruction::Relative {
 			kind,
-			label_name,
+			label,
 			width,
 		} => {
-			let instruction_address = program.len();
+			let instruction_address =
+				layout.prefix_sum(instruction_index);
 
-			let target_address = *labels
-				.get(label_name)
-				.ok_or_else(|| format!("unknown label: {}", label_name))?;
+			let target_boundary =
+				labels.instruction_boundary(*label)?;
 
-			let instruction_size = relative_width_instruction_size(*width);
-			let next_instruction_address = instruction_address + instruction_size;
+			let target_address =
+				layout.prefix_sum(target_boundary);
 
-			let offset = target_address as i128 - next_instruction_address as i128;
+			let instruction_size =
+				relative_width_instruction_size(*width);
+
+			let next_instruction_address =
+				instruction_address + instruction_size;
+
+			let offset =
+				target_address as i128 - next_instruction_address as i128;
 
 			match *width {
 				RelativeWidth::Signed4 => {
@@ -1025,49 +1132,56 @@ fn next_relative_width(width: RelativeWidth) -> Option<RelativeWidth> {
 	}
 }
 
-fn relax_relative_instructions(items: &mut [AssemblyItem]) -> Result<(), String> {
+fn relax_relative_instructions(
+	assembly_program: &mut AssemblyProgram,
+	layout: &mut FenwickTree,
+) -> Result<(), String> {
 	loop {
-		let labels = calculate_label_addresses(items)?;
-		let mut address = 0usize;
+		let labels = &assembly_program.labels;
 		let mut changed = false;
 
-		for item in items.iter_mut() {
-			match item {
-				AssemblyItem::Label(_) => {}
+		for (instruction_index, instruction) in
+			assembly_program.instructions.iter_mut().enumerate()
+		{
+			let old_instruction_size = instruction_size(&*instruction);
 
-				AssemblyItem::Instruction(instruction) => {
-					let instruction_size = instruction_size(&*instruction);
+			if let AssemblyInstruction::Relative {
+				label,
+				width,
+				..
+			} = instruction
+			{
+				let instruction_address = layout.prefix_sum(instruction_index);
 
-					if let AssemblyInstruction::Relative {
-						label_name,
-						width,
-						..
-					} = instruction
-					{
-						let target_address = *labels
-							.get(label_name)
-							.ok_or_else(|| format!("unknown label: {}", label_name))?;
+				let target_boundary = labels.instruction_boundary(*label)?;
+				let target_address = layout.prefix_sum(target_boundary);
 
-						let next_instruction_address = address + instruction_size;
+				let next_instruction_address =
+					instruction_address + old_instruction_size;
 
-						let offset = target_address as i128
-							- next_instruction_address as i128;
+				let offset =
+					target_address as i128 - next_instruction_address as i128;
 
-						if !relative_width_offset_fits(*width, offset) {
-							let wider_width = next_relative_width(*width)
-								.ok_or_else(|| {
-									format!(
-										"jump target is too far away: {}",
-										label_name
-									)
-								})?;
+				if !relative_width_offset_fits(*width, offset) {
+					let wider_width = next_relative_width(*width)
+						.ok_or_else(|| {
+							format!(
+								"relative target is too far away: {}",
+								labels.name(*label),
+							)
+						})?;
 
-							*width = wider_width;
-							changed = true;
-						}
-					}
+					let new_instruction_size =
+						relative_width_instruction_size(wider_width);
 
-					address += instruction_size;
+					*width = wider_width;
+
+					layout.add(
+						instruction_index,
+						new_instruction_size - old_instruction_size,
+					);
+
+					changed = true;
 				}
 			}
 		}
@@ -1117,29 +1231,6 @@ fn integer_literal_push_size(integer_literal: &IntegerLiteral) -> usize {
 	}
 }
 
-fn calculate_label_addresses(
-	items: &[AssemblyItem],
-) -> Result<HashMap<String, usize>, String> {
-	let mut labels = HashMap::new();
-	let mut address = 0usize;
-
-	for item in items {
-		match item {
-			AssemblyItem::Label(label_name) => {
-				if labels.insert(label_name.clone(), address).is_some() {
-					return Err(format!("duplicate label: {}", label_name));
-				}
-			}
-
-			AssemblyItem::Instruction(instruction) => {
-				address += instruction_size(instruction);
-			}
-		}
-	}
-
-	Ok(labels)
-}
-
 fn parse_register_index(text: &str) -> Result<u8, String> {
 	let literal = parse_integer_literal(text)?;
 
@@ -1159,4 +1250,197 @@ fn parse_register_index(text: &str) -> Result<u8, String> {
 	}
 
 	Ok(value as u8)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn relax_source(source: &str) -> AssemblyProgram {
+		let mut assembly_program = parse_source(source).unwrap();
+
+		let instruction_sizes: Vec<usize> = assembly_program
+			.instructions
+			.iter()
+			.map(instruction_size)
+			.collect();
+
+		let mut layout = FenwickTree::from_slice(&instruction_sizes);
+
+		relax_relative_instructions(
+			&mut assembly_program,
+			&mut layout,
+		).unwrap();
+
+		assembly_program
+	}
+
+	fn relative_width(
+		assembly_program: &AssemblyProgram,
+		instruction_index: usize,
+	) -> RelativeWidth {
+		match &assembly_program.instructions[instruction_index] {
+			AssemblyInstruction::Relative { width, .. } => *width,
+			_ => panic!("expected relative instruction"),
+		}
+	}
+
+	#[test]
+	fn forward_offset_7_uses_signed4() {
+		let source = format!(
+			"JMP target\n{}target:\nHALT",
+			"NOOP\n".repeat(7),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 0),
+			RelativeWidth::Signed4,
+		);
+	}
+
+	#[test]
+	fn forward_offset_8_uses_signed8() {
+		let source = format!(
+			"JMP target\n{}target:\nHALT",
+			"NOOP\n".repeat(8),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 0),
+			RelativeWidth::Signed8,
+		);
+	}
+
+	#[test]
+	fn backward_offset_negative_8_uses_signed4() {
+		let source = format!(
+			"target:\n{}JMP target",
+			"NOOP\n".repeat(7),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 7),
+			RelativeWidth::Signed4,
+		);
+	}
+
+	#[test]
+	fn backward_offset_negative_9_uses_signed8() {
+		let source = format!(
+			"target:\n{}JMP target",
+			"NOOP\n".repeat(8),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 8),
+			RelativeWidth::Signed8,
+		);
+	}
+
+	#[test]
+	fn widening_one_instruction_can_force_another_to_widen() {
+		let source = format!(
+			"JMP near\nJMP far\n{}near:\n{}far:\nHALT",
+			"NOOP\n".repeat(6),
+			"NOOP\n".repeat(8),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 0),
+			RelativeWidth::Signed8,
+		);
+
+		assert_eq!(
+			relative_width(&assembly_program, 1),
+			RelativeWidth::Signed8,
+		);
+	}
+
+	#[test]
+	fn forward_offset_127_uses_signed8() {
+		let source = format!(
+			"JMP target\n{}target:\nHALT",
+			"NOOP\n".repeat(127),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 0),
+			RelativeWidth::Signed8,
+		);
+	}
+
+	#[test]
+	fn forward_offset_128_uses_signed16() {
+		let source = format!(
+			"JMP target\n{}target:\nHALT",
+			"NOOP\n".repeat(128),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 0),
+			RelativeWidth::Signed16,
+		);
+	}
+
+#[test]
+	fn backward_offset_negative_128_uses_signed8() {
+		let source = format!(
+			"target:\n{}JMP target",
+			"NOOP\n".repeat(126),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 126),
+			RelativeWidth::Signed8,
+		);
+	}
+
+	#[test]
+	fn backward_offset_negative_129_uses_signed16() {
+		let source = format!(
+			"target:\n{}JMP target",
+			"NOOP\n".repeat(127),
+		);
+
+		let assembly_program = relax_source(&source);
+
+		assert_eq!(
+			relative_width(&assembly_program, 127),
+			RelativeWidth::Signed16,
+		);
+	}
+
+	#[test]
+	fn push_address_uses_relaxed_layout() {
+		let source = format!(
+			"PADDR target\nJMP target\n{}target:\nHALT",
+			"NOOP\n".repeat(8),
+		);
+
+		let program = assemble(&source).unwrap();
+
+		let pushed_address = u64::from_le_bytes(
+			program[1..9]
+				.try_into()
+				.unwrap(),
+		);
+
+		assert_eq!(pushed_address, 19);
+	}
 }
