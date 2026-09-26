@@ -174,6 +174,7 @@ enum AssemblyInstruction {
 
 struct AssemblyProgram {
 	instructions: Vec<AssemblyInstruction>,
+	relative_instruction_indices: Vec<usize>,
 	labels: LabelTable,
 }
 
@@ -219,6 +220,7 @@ fn emit_program(
 
 fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 	let mut instructions = Vec::new();
+	let mut relative_instruction_indices = Vec::new();
 	let mut labels = LabelTable::new();
 
 	for line in source.lines() {
@@ -236,12 +238,18 @@ fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 			labels.define(&label_name, instructions.len())?;
 		} else {
 			let instruction = parse_instruction(line, &mut labels)?;
+
+			if matches!(instruction, AssemblyInstruction::Relative { .. }) {
+				relative_instruction_indices.push(instructions.len());
+			}
+
 			instructions.push(instruction);
 		}
 	}
 
 	Ok(AssemblyProgram {
 		instructions,
+		relative_instruction_indices,
 		labels,
 	})
 }
@@ -1140,49 +1148,54 @@ fn relax_relative_instructions(
 		let labels = &assembly_program.labels;
 		let mut changed = false;
 
-		for (instruction_index, instruction) in
-			assembly_program.instructions.iter_mut().enumerate()
-		{
+		for &instruction_index in &assembly_program.relative_instruction_indices {
+			let instruction =
+				&mut assembly_program.instructions[instruction_index];
+
 			let old_instruction_size = instruction_size(&*instruction);
 
-			if let AssemblyInstruction::Relative {
+			let AssemblyInstruction::Relative {
 				label,
 				width,
 				..
 			} = instruction
-			{
-				let instruction_address = layout.prefix_sum(instruction_index);
+			else {
+				unreachable!(
+					"relative instruction index should point to a relative instruction"
+				);
+			};
 
-				let target_boundary = labels.instruction_boundary(*label)?;
-				let target_address = layout.prefix_sum(target_boundary);
+			let instruction_address = layout.prefix_sum(instruction_index);
 
-				let next_instruction_address =
-					instruction_address + old_instruction_size;
+			let target_boundary = labels.instruction_boundary(*label)?;
+			let target_address = layout.prefix_sum(target_boundary);
 
-				let offset =
-					target_address as i128 - next_instruction_address as i128;
+			let next_instruction_address =
+				instruction_address + old_instruction_size;
 
-				if !relative_width_offset_fits(*width, offset) {
-					let wider_width = next_relative_width(*width)
-						.ok_or_else(|| {
-							format!(
-								"relative target is too far away: {}",
-								labels.name(*label),
-							)
-						})?;
+			let offset =
+				target_address as i128 - next_instruction_address as i128;
 
-					let new_instruction_size =
-						relative_width_instruction_size(wider_width);
+			if !relative_width_offset_fits(*width, offset) {
+				let wider_width = next_relative_width(*width)
+					.ok_or_else(|| {
+						format!(
+							"relative target is too far away: {}",
+							labels.name(*label),
+						)
+					})?;
 
-					*width = wider_width;
+				let new_instruction_size =
+					relative_width_instruction_size(wider_width);
 
-					layout.add(
-						instruction_index,
-						new_instruction_size - old_instruction_size,
-					);
+				*width = wider_width;
 
-					changed = true;
-				}
+				layout.add(
+					instruction_index,
+					new_instruction_size - old_instruction_size,
+				);
+
+				changed = true;
 			}
 		}
 
