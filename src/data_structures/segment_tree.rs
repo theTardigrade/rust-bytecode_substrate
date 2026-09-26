@@ -129,3 +129,24 @@ impl SegmentTree {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn query_point_returns_values_for_containing_ranges() {
+		let mut tree = SegmentTree::new(10);
+
+		tree.add_range(2, 6, 17);
+		tree.add_range(4, 8, 23);
+
+		assert_eq!(tree.query_point(1), Vec::<usize>::new());
+		assert_eq!(tree.query_point(3), vec![17]);
+
+		let mut values = tree.query_point(5);
+		values.sort();
+
+		assert_eq!(values, vec![17, 23]);
+	}
+}
