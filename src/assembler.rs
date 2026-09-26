@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use crate::data_structures::fenwick::FenwickTree;
 
 use crate::opcodes::{
@@ -1140,67 +1140,128 @@ fn next_relative_width(width: RelativeWidth) -> Option<RelativeWidth> {
 	}
 }
 
+fn relative_offset_affected_by_growth(
+	source_index: usize,
+	target_boundary: usize,
+	grown_index: usize,
+) -> bool {
+	if target_boundary > source_index {
+		grown_index > source_index
+			&& grown_index < target_boundary
+	} else {
+		grown_index >= target_boundary
+			&& grown_index <= source_index
+	}
+}
+
 fn relax_relative_instructions(
 	assembly_program: &mut AssemblyProgram,
 	layout: &mut FenwickTree,
 ) -> Result<(), String> {
-	loop {
-		let labels = &assembly_program.labels;
-		let mut changed = false;
+	let mut queue = VecDeque::new();
+	let mut queued = vec![false; assembly_program.instructions.len()];
 
-		for &instruction_index in &assembly_program.relative_instruction_indices {
-			let instruction =
-				&mut assembly_program.instructions[instruction_index];
+	for &instruction_index in &assembly_program.relative_instruction_indices {
+		queue.push_back(instruction_index);
+		queued[instruction_index] = true;
+	}
 
-			let old_instruction_size = instruction_size(&*instruction);
+	while let Some(instruction_index) = queue.pop_front() {
+		queued[instruction_index] = false;
 
-			let AssemblyInstruction::Relative {
-				label,
-				width,
-				..
-			} = instruction
-			else {
-				unreachable!(
+		let (label, width) =
+			match &assembly_program.instructions[instruction_index] {
+				AssemblyInstruction::Relative {
+					label,
+					width,
+					..
+				} => (*label, *width),
+
+				_ => unreachable!(
 					"relative instruction index should point to a relative instruction"
-				);
+				),
 			};
 
-			let instruction_address = layout.prefix_sum(instruction_index);
+		let instruction_size =
+			relative_width_instruction_size(width);
 
-			let target_boundary = labels.instruction_boundary(*label)?;
-			let target_address = layout.prefix_sum(target_boundary);
+		let instruction_address =
+			layout.prefix_sum(instruction_index);
 
-			let next_instruction_address =
-				instruction_address + old_instruction_size;
+		let target_boundary =
+			assembly_program.labels.instruction_boundary(label)?;
 
-			let offset =
-				target_address as i128 - next_instruction_address as i128;
+		let target_address =
+			layout.prefix_sum(target_boundary);
 
-			if !relative_width_offset_fits(*width, offset) {
-				let wider_width = next_relative_width(*width)
-					.ok_or_else(|| {
-						format!(
-							"relative target is too far away: {}",
-							labels.name(*label),
-						)
-					})?;
+		let next_instruction_address =
+			instruction_address + instruction_size;
 
-				let new_instruction_size =
-					relative_width_instruction_size(wider_width);
+		let offset =
+			target_address as i128 - next_instruction_address as i128;
 
-				*width = wider_width;
-
-				layout.add(
-					instruction_index,
-					new_instruction_size - old_instruction_size,
-				);
-
-				changed = true;
-			}
+		if relative_width_offset_fits(width, offset) {
+			continue;
 		}
 
-		if !changed {
-			break;
+		let wider_width = next_relative_width(width)
+			.ok_or_else(|| {
+				format!(
+					"relative target is too far away: {}",
+					assembly_program.labels.name(label),
+				)
+			})?;
+
+		let new_instruction_size =
+			relative_width_instruction_size(wider_width);
+
+		let AssemblyInstruction::Relative {
+			width,
+			..
+		} = &mut assembly_program.instructions[instruction_index]
+		else {
+			unreachable!(
+				"relative instruction index should point to a relative instruction"
+			);
+		};
+
+		*width = wider_width;
+
+		layout.add(
+			instruction_index,
+			new_instruction_size - instruction_size,
+		);
+
+		if !queued[instruction_index] {
+			queue.push_back(instruction_index);
+			queued[instruction_index] = true;
+		}
+
+		for &affected_index in &assembly_program.relative_instruction_indices {
+			let affected_label =
+				match &assembly_program.instructions[affected_index] {
+					AssemblyInstruction::Relative {
+						label,
+						..
+					} => *label,
+
+					_ => unreachable!(
+						"relative instruction index should point to a relative instruction"
+					),
+				};
+
+			let affected_target_boundary =
+				assembly_program.labels.instruction_boundary(affected_label)?;
+
+			if relative_offset_affected_by_growth(
+				affected_index,
+				affected_target_boundary,
+				instruction_index,
+			) && !queued[affected_index]
+			{
+				queue.push_back(affected_index);
+				queued[affected_index] = true;
+			}
 		}
 	}
 
