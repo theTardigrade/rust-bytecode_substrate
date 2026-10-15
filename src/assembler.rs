@@ -141,7 +141,7 @@ enum AssemblyInstruction {
 	CompGreaterThanOrEqualSigned,
 
 	Dup,
-	Drop,
+	Pop,
 	Swap,
 
 	Halt,
@@ -308,7 +308,7 @@ fn parse_instruction(
 		"POP" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
-			Ok(AssemblyInstruction::Drop)
+			Ok(AssemblyInstruction::Pop)
 		}
 
 		"SWAP" => {
@@ -873,7 +873,7 @@ fn emit_instruction(
 			program.push(OpcodeByte::Dup as u8);
 		}
 
-		AssemblyInstruction::Drop => {
+		AssemblyInstruction::Pop => {
 			program.push(OpcodeByte::Pop as u8);
 		}
 
@@ -1073,7 +1073,7 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::LogicShiftRight
 			| AssemblyInstruction::ArithShiftRight
 			| AssemblyInstruction::Dup
-			| AssemblyInstruction::Drop
+			| AssemblyInstruction::Pop
 			| AssemblyInstruction::Swap
 			| AssemblyInstruction::Halt
 			| AssemblyInstruction::CompEqual
