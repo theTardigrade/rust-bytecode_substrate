@@ -17,7 +17,7 @@ use crate::opcodes::{
 	PUSH_SIGNED4_END,
 };
 
-use crate::host::{Host, HostContext};
+use crate::host::{Host, HostContext, HostCallOutcome};
 
 pub type Word = u64;
 
@@ -140,10 +140,15 @@ fn get_memory_range(memory: &[u8], address: Word, length: usize) -> std::ops::Ra
 	start..end
 }
 
+pub struct VmResult {
+	pub stack: Vec<Word>,
+	pub exit_code: Option<Word>,
+}
+
 pub fn run_program(
 	program: &[u8],
 	host: &mut dyn Host,
-) -> Vec<Word> {
+) -> VmResult {
 	let mut stack: Vec<Word> = Vec::with_capacity(1 << 12);
 	let mut call_stack: Vec<usize> = Vec::with_capacity(1 << 12);
 	let mut memory: Vec<u8> = Vec::new();
@@ -681,16 +686,11 @@ pub fn run_program(
 
 			OpcodeByte::HostCall => {
 				let host_call_id = pop_word(&mut stack);
+				let mut context = HostContext::new(&mut stack, &mut memory);
 
-				let mut context = HostContext::new(
-					&mut stack,
-					&mut memory,
-				);
-
-				host.call(
-					host_call_id,
-					&mut context,
-				);
+				if let HostCallOutcome::Terminate(exit_code) = host.call(host_call_id, &mut context) {
+					return VmResult { stack, exit_code: Some(exit_code) };
+				}
 			}
 
 			OpcodeByte::Halt => {
@@ -699,5 +699,8 @@ pub fn run_program(
 		}
 	}
 
-	stack
+	VmResult {
+		stack,
+		exit_code: None,
+	}
 }

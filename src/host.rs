@@ -35,10 +35,11 @@ impl<'a> HostContext<'a> {
 	}
 }
 
+pub enum HostCallOutcome {
+	Continue,
+	Terminate(Word),
+}
+
 pub trait Host {
-	fn call(
-		&mut self,
-		id: Word,
-		context: &mut HostContext,
-	);
+	fn call(&mut self, id: Word, context: &mut HostContext) -> HostCallOutcome;
 }

@@ -12,7 +12,7 @@ mod vm;
 const ASSEMBLY_FILE_EXTENSION: &str = ".sub.asm";
 const BYTECODE_FILE_EXTENSION: &str = ".sub.bc";
 
-fn main() {
+fn main() -> std::process::ExitCode {
 	let arguments: Vec<String> = env::args().collect();
 
 	if arguments.len() != 2 {
@@ -22,7 +22,7 @@ fn main() {
 			ASSEMBLY_FILE_EXTENSION,
 			BYTECODE_FILE_EXTENSION,
 		);
-		return;
+		return std::process::ExitCode::FAILURE;
 	}
 
 	let path = Path::new(&arguments[1]);
@@ -44,7 +44,15 @@ fn main() {
 	println!("Bytecode: {:02X?}", program);
 
 	let mut host = host_calls::HostCallDispatcher;
-	let stack = vm::run_program(&program, &mut host);
+	let result = vm::run_program(&program, &mut host);
 
-	println!("Stack: {:?}", stack);
+	println!("Stack: {:?}", result.stack);
+
+	match result.exit_code {
+		Some(code) => {
+			let code = u8::try_from(code).expect("process exit code must be between 0 and 255");
+			std::process::ExitCode::from(code)
+		}
+		None => std::process::ExitCode::SUCCESS,
+	}
 }
