@@ -75,23 +75,25 @@ impl SegmentTree {
 		);
 	}
 
-	pub fn query_point(&self, index: usize) -> Vec<usize> {
+	pub fn query_point(
+		&self,
+		index: usize,
+		values: &mut Vec<usize>,
+	) {
 		assert!(
 			index < self.size,
 			"segment tree index out of bounds",
 		);
 
-		let mut values = Vec::new();
+		values.clear();
 
 		self.query_point_recursive(
 			0,
 			0,
 			self.size,
 			index,
-			&mut values,
+			values,
 		);
-
-		values
 	}
 
 	fn query_point_recursive(
@@ -141,12 +143,16 @@ mod tests {
 		tree.add_range(2, 6, 17);
 		tree.add_range(4, 8, 23);
 
-		assert_eq!(tree.query_point(1), Vec::<usize>::new());
-		assert_eq!(tree.query_point(3), vec![17]);
+		let mut values = Vec::new();
 
-		let mut values = tree.query_point(5);
+		tree.query_point(1, &mut values);
+		assert_eq!(values, Vec::<usize>::new());
+
+		tree.query_point(3, &mut values);
+		assert_eq!(values, vec![17]);
+
+		tree.query_point(5, &mut values);
 		values.sort();
-
 		assert_eq!(values, vec![17, 23]);
 	}
 }

@@ -1156,6 +1156,8 @@ fn relax_relative_instructions(
 		queued[instruction_index] = true;
 	}
 
+	let mut affected_indices = Vec::new();
+
 	while let Some(instruction_index) = queue.pop_front() {
 		queued[instruction_index] = false;
 
@@ -1227,7 +1229,12 @@ fn relax_relative_instructions(
 			queued[instruction_index] = true;
 		}
 
-		for affected_index in dependencies.query_point(instruction_index) {
+		dependencies.query_point(
+			instruction_index,
+			&mut affected_indices,
+		);
+
+		for &affected_index in &affected_indices {
 			if !queued[affected_index] {
 				queue.push_back(affected_index);
 				queued[affected_index] = true;
