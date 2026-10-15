@@ -121,7 +121,11 @@ pub enum OpcodeByte {
 	// 0xD0–0xDF = JumpRelSigned4
 	// Signed 4-bit relative offset stored in the low nibble.
 
-	// 0xE0–0xFE currently free
+	// 0xE0–0xEF currently free
+
+	HostCall                       = 0xF0,
+
+	// 0xF1–0xFE currently free
 
 	Halt                           = 0xFF,
 }

@@ -4,6 +4,8 @@ use std::path::Path;
 
 mod assembler;
 mod data_structures;
+mod host;
+mod host_calls;
 mod opcodes;
 mod vm;
 
@@ -41,7 +43,8 @@ fn main() {
 
 	println!("Bytecode: {:02X?}", program);
 
-	let stack = vm::run_program(&program);
+	let mut host = host_calls::HostCallDispatcher;
+	let stack = vm::run_program(&program, &mut host);
 
 	println!("Stack: {:?}", stack);
 }

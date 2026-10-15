@@ -167,6 +167,8 @@ enum AssemblyInstruction {
 	MemCopy8,
 	MemFill8,
 
+	HostCall(IntegerLiteral),
+
 	Relative {
 		kind: RelativeInstructionKind,
 		label: LabelId,
@@ -603,6 +605,14 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::MemFill8)
 		}
 
+		"HOSTCALL" => {
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+
+			let host_call_id = parse_integer_literal(parts[1])?;
+
+			Ok(AssemblyInstruction::HostCall(host_call_id))
+		}
+
 		"HALT" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
@@ -695,50 +705,10 @@ fn emit_instruction(
 ) -> Result<(), String> {
 	match instruction {
 		AssemblyInstruction::Push(integer_literal) => {
-			match integer_literal {
-				IntegerLiteral::Unsigned(unsigned_value) => {
-					let unsigned4_max = (PUSH_UNSIGNED4_END - PUSH_UNSIGNED4_START) as u64;
-
-					if *unsigned_value <= unsigned4_max {
-						program.push(PUSH_UNSIGNED4_START + *unsigned_value as u8);
-					} else if *unsigned_value <= u8::MAX as u64 {
-						program.push(OpcodeByte::PushUnsigned8 as u8);
-						program.push(*unsigned_value as u8);
-					} else if *unsigned_value <= u16::MAX as u64 {
-						program.push(OpcodeByte::PushUnsigned16 as u8);
-						program.extend_from_slice(&(*unsigned_value as u16).to_le_bytes());
-					} else if *unsigned_value <= u32::MAX as u64 {
-						program.push(OpcodeByte::PushUnsigned32 as u8);
-						program.extend_from_slice(&(*unsigned_value as u32).to_le_bytes());
-					} else {
-						program.push(OpcodeByte::Push64 as u8);
-						program.extend_from_slice(&unsigned_value.to_le_bytes());
-					}
-				}
-
-				IntegerLiteral::Signed(signed_value) => {
-					let signed4_mask = PUSH_SIGNED4_END - PUSH_SIGNED4_START;
-					let signed4_count = (signed4_mask + 1) as i64;
-					let signed4_half = signed4_count / 2;
-
-					if *signed_value >= -signed4_half && *signed_value < signed4_half {
-						let encoded_value = (*signed_value as i8 as u8) & signed4_mask;
-						program.push(PUSH_SIGNED4_START + encoded_value);
-					} else if *signed_value >= i8::MIN as i64 && *signed_value <= i8::MAX as i64 {
-						program.push(OpcodeByte::PushSigned8 as u8);
-						program.push(*signed_value as i8 as u8);
-					} else if *signed_value >= i16::MIN as i64 && *signed_value <= i16::MAX as i64 {
-						program.push(OpcodeByte::PushSigned16 as u8);
-						program.extend_from_slice(&(*signed_value as i16).to_le_bytes());
-					} else if *signed_value >= i32::MIN as i64 && *signed_value <= i32::MAX as i64 {
-						program.push(OpcodeByte::PushSigned32 as u8);
-						program.extend_from_slice(&(*signed_value as i32).to_le_bytes());
-					} else {
-						program.push(OpcodeByte::Push64 as u8);
-						program.extend_from_slice(&signed_value.to_le_bytes());
-					}
-				}
-			}
+			emit_integer_literal_push(
+				program,
+				integer_literal,
+			);
 		}
 
 		AssemblyInstruction::PushAddress(label) => {
@@ -937,6 +907,15 @@ fn emit_instruction(
 			program.push(OpcodeByte::MemFill8 as u8);
 		}
 
+		AssemblyInstruction::HostCall(host_call_id) => {
+			emit_integer_literal_push(
+				program,
+				host_call_id,
+			);
+
+			program.push(OpcodeByte::HostCall as u8);
+		}
+		
 		AssemblyInstruction::Relative {
 			kind,
 			label,
@@ -1051,6 +1030,88 @@ fn emit_instruction(
 	Ok(())
 }
 
+fn emit_integer_literal_push(
+	program: &mut Vec<u8>,
+	integer_literal: &IntegerLiteral,
+) {
+	match integer_literal {
+		IntegerLiteral::Unsigned(unsigned_value) => {
+			let unsigned4_max =
+				(PUSH_UNSIGNED4_END - PUSH_UNSIGNED4_START) as u64;
+
+			if *unsigned_value <= unsigned4_max {
+				program.push(
+					PUSH_UNSIGNED4_START + *unsigned_value as u8
+				);
+			} else if *unsigned_value <= u8::MAX as u64 {
+				program.push(OpcodeByte::PushUnsigned8 as u8);
+				program.push(*unsigned_value as u8);
+			} else if *unsigned_value <= u16::MAX as u64 {
+				program.push(OpcodeByte::PushUnsigned16 as u8);
+				program.extend_from_slice(
+					&(*unsigned_value as u16).to_le_bytes()
+				);
+			} else if *unsigned_value <= u32::MAX as u64 {
+				program.push(OpcodeByte::PushUnsigned32 as u8);
+				program.extend_from_slice(
+					&(*unsigned_value as u32).to_le_bytes()
+				);
+			} else {
+				program.push(OpcodeByte::Push64 as u8);
+				program.extend_from_slice(
+					&unsigned_value.to_le_bytes()
+				);
+			}
+		}
+
+		IntegerLiteral::Signed(signed_value) => {
+			let signed4_mask =
+				PUSH_SIGNED4_END - PUSH_SIGNED4_START;
+
+			let signed4_count =
+				(signed4_mask + 1) as i64;
+
+			let signed4_half =
+				signed4_count / 2;
+
+			if *signed_value >= -signed4_half
+				&& *signed_value < signed4_half
+			{
+				let encoded_value =
+					(*signed_value as i8 as u8) & signed4_mask;
+
+				program.push(
+					PUSH_SIGNED4_START + encoded_value
+				);
+			} else if *signed_value >= i8::MIN as i64
+				&& *signed_value <= i8::MAX as i64
+			{
+				program.push(OpcodeByte::PushSigned8 as u8);
+				program.push(*signed_value as i8 as u8);
+			} else if *signed_value >= i16::MIN as i64
+				&& *signed_value <= i16::MAX as i64
+			{
+				program.push(OpcodeByte::PushSigned16 as u8);
+				program.extend_from_slice(
+					&(*signed_value as i16).to_le_bytes()
+				);
+			} else if *signed_value >= i32::MIN as i64
+				&& *signed_value <= i32::MAX as i64
+			{
+				program.push(OpcodeByte::PushSigned32 as u8);
+				program.extend_from_slice(
+					&(*signed_value as i32).to_le_bytes()
+				);
+			} else {
+				program.push(OpcodeByte::Push64 as u8);
+				program.extend_from_slice(
+					&signed_value.to_le_bytes()
+				);
+			}
+		}
+	}
+}
+
 fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 	match instruction {
 		AssemblyInstruction::Push(integer_literal) => {
@@ -1103,6 +1164,10 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
 			| AssemblyInstruction::CallIndirect => 1,
+
+		AssemblyInstruction::HostCall(host_call_id) => {
+			integer_literal_push_size(host_call_id) + 1
+		}
 		
 		AssemblyInstruction::PushAddress(_) => 9,
 

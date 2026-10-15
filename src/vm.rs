@@ -17,6 +17,8 @@ use crate::opcodes::{
 	PUSH_SIGNED4_END,
 };
 
+use crate::host::{Host, HostContext};
+
 pub type Word = u64;
 
 fn pop_word(stack: &mut Vec<Word>) -> Word {
@@ -138,7 +140,10 @@ fn get_memory_range(memory: &[u8], address: Word, length: usize) -> std::ops::Ra
 	start..end
 }
 
-pub fn run_program(program: &[u8]) -> Vec<Word> {
+pub fn run_program(
+	program: &[u8],
+	host: &mut dyn Host,
+) -> Vec<Word> {
 	let mut stack: Vec<Word> = Vec::with_capacity(1 << 12);
 	let mut call_stack: Vec<usize> = Vec::with_capacity(1 << 12);
 	let mut memory: Vec<u8> = Vec::new();
@@ -672,6 +677,20 @@ pub fn run_program(program: &[u8]) -> Vec<Word> {
 				let range = get_memory_range(&memory, address, length);
 
 				memory[range].fill(value as u8);
+			}
+
+			OpcodeByte::HostCall => {
+				let host_call_id = pop_word(&mut stack);
+
+				let mut context = HostContext::new(
+					&mut stack,
+					&mut memory,
+				);
+
+				host.call(
+					host_call_id,
+					&mut context,
+				);
 			}
 
 			OpcodeByte::Halt => {
