@@ -16,5 +16,3 @@ SWAP
 
 ; Write the bytes we received to stdout.
 HOSTCALL 0
-
-HALT

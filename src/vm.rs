@@ -150,7 +150,7 @@ pub fn run_program(
 	let mut registers = [0; REGISTER_COUNT];
 	let mut ip: usize = 0;
 
-	loop {
+	while ip < program.len() {
 		let raw_opcode_byte = get_next_byte_from_program(program, &mut ip);
 
 		if (REGISTER_GET_START..=REGISTER_GET_END).contains(&raw_opcode_byte) {

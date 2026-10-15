@@ -33,5 +33,3 @@ MEMST8
 PUSH 0       ; address
 PUSH 6       ; length
 HOSTCALL 0
-
-HALT
