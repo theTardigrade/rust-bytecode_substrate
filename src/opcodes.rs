@@ -58,7 +58,6 @@ pub enum OpcodeByte {
 	PushSigned32                   = 0x17,
 	Push64                         = 0x18,
 
-
 	CompEqual                      = 0x19,
 	CompNotEqual                   = 0x1A,
 	CompLessThanUnsigned           = 0x1B,
@@ -104,7 +103,15 @@ pub enum OpcodeByte {
 	MemCopy8                       = 0x3C,
 	MemFill8                       = 0x3D, // maybe add MemZeroFill later
 
-	// 0x3E–0x8F currently free
+	// 0x3E–0x5F currently free
+
+	// 0x60–0x6F = RegisterGet
+	// Pushes the value of the register identified by the low nibble.
+
+	// 0x70–0x7F = RegisterSet
+	// Pops a value and stores it in the register identified by the low nibble.
+
+	// 0x80–0x8F currently free
 
 	// 0x90–0x9F = PushUnsigned4
 	// Unsigned 4-bit value stored in the low nibble.
