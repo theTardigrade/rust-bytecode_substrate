@@ -1,5 +1,7 @@
 use std::collections::{HashMap, VecDeque};
+
 use crate::data_structures::fenwick::FenwickTree;
+use crate::data_structures::segment_tree::SegmentTree;
 
 use crate::opcodes::{
 	OpcodeByte,
@@ -1140,24 +1142,12 @@ fn next_relative_width(width: RelativeWidth) -> Option<RelativeWidth> {
 	}
 }
 
-fn relative_offset_affected_by_growth(
-	source_index: usize,
-	target_boundary: usize,
-	grown_index: usize,
-) -> bool {
-	if target_boundary > source_index {
-		grown_index > source_index
-			&& grown_index < target_boundary
-	} else {
-		grown_index >= target_boundary
-			&& grown_index <= source_index
-	}
-}
-
 fn relax_relative_instructions(
 	assembly_program: &mut AssemblyProgram,
 	layout: &mut FenwickTree,
 ) -> Result<(), String> {
+	let dependencies = build_relative_dependency_tree(assembly_program)?;
+
 	let mut queue = VecDeque::new();
 	let mut queued = vec![false; assembly_program.instructions.len()];
 
@@ -1237,28 +1227,8 @@ fn relax_relative_instructions(
 			queued[instruction_index] = true;
 		}
 
-		for &affected_index in &assembly_program.relative_instruction_indices {
-			let affected_label =
-				match &assembly_program.instructions[affected_index] {
-					AssemblyInstruction::Relative {
-						label,
-						..
-					} => *label,
-
-					_ => unreachable!(
-						"relative instruction index should point to a relative instruction"
-					),
-				};
-
-			let affected_target_boundary =
-				assembly_program.labels.instruction_boundary(affected_label)?;
-
-			if relative_offset_affected_by_growth(
-				affected_index,
-				affected_target_boundary,
-				instruction_index,
-			) && !queued[affected_index]
-			{
+		for affected_index in dependencies.query_point(instruction_index) {
+			if !queued[affected_index] {
 				queue.push_back(affected_index);
 				queued[affected_index] = true;
 			}
@@ -1324,6 +1294,46 @@ fn parse_register_index(text: &str) -> Result<u8, String> {
 	}
 
 	Ok(value as u8)
+}
+
+fn build_relative_dependency_tree(
+	assembly_program: &AssemblyProgram,
+) -> Result<SegmentTree, String> {
+	let mut dependencies =
+		SegmentTree::new(assembly_program.instructions.len());
+
+	for &instruction_index in &assembly_program.relative_instruction_indices {
+		let label =
+			match &assembly_program.instructions[instruction_index] {
+				AssemblyInstruction::Relative {
+					label,
+					..
+				} => *label,
+
+				_ => unreachable!(
+					"relative instruction index should point to a relative instruction"
+				),
+			};
+
+		let target_boundary =
+			assembly_program.labels.instruction_boundary(label)?;
+
+		if target_boundary > instruction_index {
+			dependencies.add_range(
+				instruction_index + 1,
+				target_boundary,
+				instruction_index,
+			);
+		} else {
+			dependencies.add_range(
+				target_boundary,
+				instruction_index + 1,
+				instruction_index,
+			);
+		}
+	}
+
+	Ok(dependencies)
 }
 
 #[cfg(test)]
