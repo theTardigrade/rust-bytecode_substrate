@@ -1,3 +1,5 @@
+mod read;
+mod read_from_stdin;
 mod write;
 mod write_to_stdout;
 mod write_to_stderr;
@@ -12,6 +14,7 @@ use num_enum::TryFromPrimitive;
 pub enum HostCallId {
 	WriteToStdout = 0,
 	WriteToStderr = 1,
+	ReadFromStdin = 2,
 }
 
 pub struct HostCallDispatcher;
@@ -32,6 +35,10 @@ impl Host for HostCallDispatcher {
 
 			HostCallId::WriteToStderr => {
 				write_to_stderr::call(context);
+			}
+
+			HostCallId::ReadFromStdin => {
+				read_from_stdin::call(context);
 			}
 		}
 	}
