@@ -57,8 +57,8 @@ ADD
 CALL arithmetic_test
 
 ; Exercise an absolute indirect call.
-PADDR bitwise_test
-CALLIND
+PUSH bitwise_test
+CALL
 
 ; A couple of signed-operation checks.
 PUSH -20

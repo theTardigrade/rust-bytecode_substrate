@@ -345,21 +345,17 @@ fn parse_instruction(
 		"PUSH" => {
 			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-			let integer_literal = parse_integer_literal(parts[1])?;
+			let operand = parts[1];
 
-			Ok(AssemblyInstruction::Push(integer_literal))
-		}
+			if validate_label_name(operand).is_ok() {
+				let label = labels.get_or_create(operand);
 
-		"PADDR" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+				Ok(AssemblyInstruction::PushAddress(label))
+			} else {
+				let integer_literal = parse_integer_literal(operand)?;
 
-			let label_name = parts[1];
-
-			validate_label_name(label_name)?;
-
-			let label = labels.get_or_create(label_name);
-
-			Ok(AssemblyInstruction::PushAddress(label))
+				Ok(AssemblyInstruction::Push(integer_literal))
+			}
 		}
 
 		"ADD" => {
