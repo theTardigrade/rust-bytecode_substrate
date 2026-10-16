@@ -490,19 +490,22 @@ fn parse_instruction(
 		}
 
 		"JMP" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+			if parts.len() == 1 {
+				Ok(AssemblyInstruction::JumpIndirect)
+			} else {
+				expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-			let label_name = parts[1];
+				let label_name = parts[1];
+				validate_label_name(label_name)?;
 
-			validate_label_name(label_name)?;
+				let label = labels.get_or_create(label_name);
 
-			let label = labels.get_or_create(label_name);
-
-			Ok(AssemblyInstruction::Relative {
-				kind: RelativeInstructionKind::Jump,
-				label,
-				width: RelativeWidth::Signed4,
-			})
+				Ok(AssemblyInstruction::Relative {
+					kind: RelativeInstructionKind::Jump,
+					label,
+					width: RelativeWidth::Signed4,
+				})
+			}
 		}
 
 		"JZ" => {
@@ -522,19 +525,22 @@ fn parse_instruction(
 		}
 
 		"CALL" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+			if parts.len() == 1 {
+				Ok(AssemblyInstruction::CallIndirect)
+			} else {
+				expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-			let label_name = parts[1];
+				let label_name = parts[1];
+				validate_label_name(label_name)?;
 
-			validate_label_name(label_name)?;
+				let label = labels.get_or_create(label_name);
 
-			let label = labels.get_or_create(label_name);
-
-			Ok(AssemblyInstruction::Relative {
-				kind: RelativeInstructionKind::Call,
-				label,
-				width: RelativeWidth::Signed4,
-			})
+				Ok(AssemblyInstruction::Relative {
+					kind: RelativeInstructionKind::Call,
+					label,
+					width: RelativeWidth::Signed4,
+				})
+			}
 		}
 
 		"RET" => {
@@ -543,40 +549,28 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::Return)
 		}
 
-		"JMPIND" => {
-			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-
-			Ok(AssemblyInstruction::JumpIndirect)
-		}
-
-		"CALLIND" => {
-			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-
-			Ok(AssemblyInstruction::CallIndirect)
-		}
-
 		"REGGET" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
-			
-			Ok(AssemblyInstruction::RegisterGet(parse_register_index(parts[1])?))
+			if parts.len() == 1 {
+				Ok(AssemblyInstruction::RegGetIndirect)
+			} else {
+				expect_operand_count(&parts, 1, mnemonic.as_str())?;
+
+				Ok(AssemblyInstruction::RegisterGet(
+					parse_register_index(parts[1])?,
+				))
+			}
 		}
 
 		"REGSET" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
-			
-			Ok(AssemblyInstruction::RegisterSet(parse_register_index(parts[1])?))
-		}
+			if parts.len() == 1 {
+				Ok(AssemblyInstruction::RegSetIndirect)
+			} else {
+				expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-		"REGGETIND" => {
-			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-
-			Ok(AssemblyInstruction::RegGetIndirect)
-		}
-
-		"REGSETIND" => {
-			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-
-			Ok(AssemblyInstruction::RegSetIndirect)
+				Ok(AssemblyInstruction::RegisterSet(
+					parse_register_index(parts[1])?,
+				))
+			}
 		}
 
 		"MEMLD8" => {
@@ -640,17 +634,15 @@ fn parse_instruction(
 		}
 
 		"HOSTCALL" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+			if parts.len() == 1 {
+				Ok(AssemblyInstruction::HostCallIndirect)
+			} else {
+				expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-			let host_call_id = parse_host_call_id(parts[1])?;
+				let host_call_id = parse_host_call_id(parts[1])?;
 
-			Ok(AssemblyInstruction::HostCall(host_call_id))
-		}
-
-		"HOSTCALLIND" => {
-			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-
-			Ok(AssemblyInstruction::HostCallIndirect)
+				Ok(AssemblyInstruction::HostCall(host_call_id))
+			}
 		}
 
 		"HALT" => {
@@ -1266,7 +1258,8 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::MemFill8
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
-			| AssemblyInstruction::CallIndirect => 1,
+			| AssemblyInstruction::CallIndirect
+			| AssemblyInstruction::HostCallIndirect => 1,
 
 		AssemblyInstruction::HostCall(host_call_id) => {
 			if direct_host_call_opcode(host_call_id).is_some() {

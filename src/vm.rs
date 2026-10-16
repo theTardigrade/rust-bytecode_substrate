@@ -224,11 +224,15 @@ pub fn run_program(
 			continue;
 		}
 
-		let direct_host_call_id = (HOST_CALL_DIRECT_START..=HOST_CALL_DIRECT_END)
+		let direct_host_call_id = if (HOST_CALL_DIRECT_START..=HOST_CALL_DIRECT_END)
 			.contains(&raw_opcode_byte)
-			.then(|| (raw_opcode_byte - HOST_CALL_DIRECT_START) as Word);
+		{
+			Some((raw_opcode_byte - HOST_CALL_DIRECT_START) as Word)
+		} else {
+			None
+		};
 
-		let opcode= if direct_host_call_id.is_some() {
+		let opcode = if direct_host_call_id.is_some() {
 			OpcodeByte::HostCallIndirect
 		} else {
 			OpcodeByte::try_from(raw_opcode_byte).expect("Unknown opcode byte")
@@ -737,7 +741,10 @@ pub fn run_program(
 			}
 
 			OpcodeByte::HostCallIndirect => {
-				let host_call_id = pop_word(&mut stack);
+				let host_call_id = match direct_host_call_id {
+					Some(id) => id,
+					None => stack.pop().expect("Stack underflow"),
+				};
 				let mut context = HostContext::new(&mut stack, &mut memory);
 
 				if let HostCallOutcome::Terminate(exit_code) = host.call(host_call_id, &mut context) {
