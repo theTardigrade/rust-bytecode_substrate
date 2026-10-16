@@ -1,5 +1,8 @@
 use num_enum::TryFromPrimitive;
 
+pub const PICK_UNSIGNED4_START: u8 = 0x40;
+pub const PICK_UNSIGNED4_END: u8 = 0x4F;
+
 pub const REGISTER_GET_START: u8 = 0x60;
 pub const REGISTER_GET_END: u8 = 0x6F;
 
@@ -46,64 +49,73 @@ pub enum OpcodeByte {
 	LogicShiftRight                = 0x0D,
 	ArithShiftRight                = 0x0E,
 
-	Dup                            = 0x0F,
-	Pop                            = 0x10,
-	Swap                           = 0x11,
+	Pop                            = 0x0F,
+	Swap                           = 0x10,
 
-	PushUnsigned8                  = 0x12,
-	PushSigned8                    = 0x13,
-	PushUnsigned16                 = 0x14,
-	PushSigned16                   = 0x15,
-	PushUnsigned32                 = 0x16,
-	PushSigned32                   = 0x17,
-	Push64                         = 0x18,
+	PushUnsigned8                  = 0x11,
+	PushSigned8                    = 0x12,
+	PushUnsigned16                 = 0x13,
+	PushSigned16                   = 0x14,
+	PushUnsigned32                 = 0x15,
+	PushSigned32                   = 0x16,
+	Push64                         = 0x17,
 
-	CompEqual                      = 0x19,
-	CompNotEqual                   = 0x1A,
-	CompLessThanUnsigned           = 0x1B,
-	CompLessThanSigned             = 0x1C,
-	CompLessThanOrEqualUnsigned    = 0x1D,
-	CompLessThanOrEqualSigned      = 0x1E,
-	CompGreaterThanUnsigned        = 0x1F,
-	CompGreaterThanSigned          = 0x20,
-	CompGreaterThanOrEqualUnsigned = 0x21,
-	CompGreaterThanOrEqualSigned   = 0x22,
+	CompEqual                      = 0x18,
+	CompNotEqual                   = 0x19,
+	CompLessThanUnsigned           = 0x1A,
+	CompLessThanSigned             = 0x1B,
+	CompLessThanOrEqualUnsigned    = 0x1C,
+	CompLessThanOrEqualSigned      = 0x1D,
+	CompGreaterThanUnsigned        = 0x1E,
+	CompGreaterThanSigned          = 0x1F,
+	CompGreaterThanOrEqualUnsigned = 0x20,
+	CompGreaterThanOrEqualSigned   = 0x21,
 
-	JumpRelSigned8                 = 0x23,
-	JumpRelSigned16                = 0x24,
-	JumpRelSigned32                = 0x25,
-	JumpRelSigned64                = 0x26,
+	JumpRelSigned8                 = 0x22,
+	JumpRelSigned16                = 0x23,
+	JumpRelSigned32                = 0x24,
+	JumpRelSigned64                = 0x25,
 
-	JumpIfZeroRelSigned8           = 0x27,
-	JumpIfZeroRelSigned16          = 0x28,
-	JumpIfZeroRelSigned32          = 0x29,
-	JumpIfZeroRelSigned64          = 0x2A,
+	JumpIfZeroRelSigned8           = 0x26,
+	JumpIfZeroRelSigned16          = 0x27,
+	JumpIfZeroRelSigned32          = 0x28,
+	JumpIfZeroRelSigned64          = 0x29,
 
-	CallRelSigned8                 = 0x2B,
-	CallRelSigned16                = 0x2C,
-	CallRelSigned32                = 0x2D,
-	CallRelSigned64                = 0x2E,
+	CallRelSigned8                 = 0x2A,
+	CallRelSigned16                = 0x2B,
+	CallRelSigned32                = 0x2C,
+	CallRelSigned64                = 0x2D,
 
-	JumpAbsIndirect                = 0x2F,
-	CallAbsIndirect                = 0x30,
-	Return                         = 0x31,
+	JumpAbsIndirect                = 0x2E,
+	CallAbsIndirect                = 0x2F,
+	Return                         = 0x30,
 
-	MemLoad8                       = 0x32,
-	MemLoad16                      = 0x33,
-	MemLoad32                      = 0x34,
-	MemLoad64                      = 0x35,
+	MemLoad8                       = 0x31,
+	MemLoad16                      = 0x32,
+	MemLoad32                      = 0x33,
+	MemLoad64                      = 0x34,
 
-	MemStore8                      = 0x36,
-	MemStore16                     = 0x37,
-	MemStore32                     = 0x38,
-	MemStore64                     = 0x39,
+	MemStore8                      = 0x35,
+	MemStore16                     = 0x36,
+	MemStore32                     = 0x37,
+	MemStore64                     = 0x38,
 
-	MemSize                        = 0x3A,
-	MemGrow                        = 0x3B,
-	MemCopy8                       = 0x3C,
-	MemFill8                       = 0x3D, // maybe add MemZeroFill later
+	MemSize                        = 0x39,
+	MemGrow                        = 0x3A,
+	MemCopy8                       = 0x3B,
+	MemFill8                       = 0x3C,
 
-	// 0x3E–0x5F currently free
+	// 0x3D–0x3F currently free
+
+	// 0x40–0x4F = PickUnsigned4
+	// Unsigned 4-bit stack depth stored in the low nibble. (Depth 0 duplicates the top stack value.)
+
+	PickUnsigned8                  = 0x50,
+	PickUnsigned16                 = 0x51,
+	PickUnsigned32                 = 0x52,
+	PickUnsigned64                 = 0x53,
+
+	// 0x54–0x5F currently free
 
 	// 0x60–0x6F = RegisterGet
 	// Pushes the value of the register identified by the low nibble.
@@ -111,7 +123,10 @@ pub enum OpcodeByte {
 	// 0x70–0x7F = RegisterSet
 	// Pops a value and stores it in the register identified by the low nibble.
 
-	// 0x80–0x8F currently free
+	RegGetIndirect                 = 0x80,
+	RegSetIndirect                 = 0x81,
+
+	// 0x82–0x8F currently free
 
 	// 0x90–0x9F = PushUnsigned4
 	// Unsigned 4-bit value stored in the low nibble.

@@ -14,7 +14,11 @@ use crate::opcodes::{
 	CALL_REL_SIGNED4_START,
 	CALL_REL_SIGNED4_END,
 	JUMP_IF_ZERO_REL_SIGNED4_START,
-	JUMP_IF_ZERO_REL_SIGNED4_END, REGISTER_COUNT, REGISTER_GET_START, REGISTER_SET_START,
+	JUMP_IF_ZERO_REL_SIGNED4_END,
+	PICK_UNSIGNED4_START,
+	REGISTER_COUNT,
+	REGISTER_GET_START,
+	REGISTER_SET_START,
 };
 
 enum IntegerLiteral {
@@ -140,17 +144,20 @@ enum AssemblyInstruction {
 	CompGreaterThanOrEqualUnsigned,
 	CompGreaterThanOrEqualSigned,
 
-	Dup,
+	Pick(u64),
 	Pop,
 	Swap,
 
 	Halt,
 	Return,
+
 	JumpIndirect,
 	CallIndirect,
 
 	RegisterGet(u8),
 	RegisterSet(u8),
+	RegGetIndirect,
+	RegSetIndirect,
 
 	MemLoad8,
 	MemLoad16,
@@ -304,7 +311,18 @@ fn parse_instruction(
 		"DUP" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
-			Ok(AssemblyInstruction::Dup)
+			Ok(AssemblyInstruction::Pick(0))
+		}
+
+		"PICK" => {
+			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+
+			let depth = match parse_integer_literal(parts[1])? {
+				IntegerLiteral::Unsigned(depth) => depth,
+				IntegerLiteral::Signed(_) => return Err("PICK depth cannot be negative".to_string()),
+			};
+
+			Ok(AssemblyInstruction::Pick(depth))
 		}
 
 		"POP" => {
@@ -545,6 +563,18 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::RegisterSet(parse_register_index(parts[1])?))
 		}
 
+		"REGGETIND" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::RegGetIndirect)
+		}
+
+		"REGSETIND" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::RegSetIndirect)
+		}
+
 		"MEMLD8" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 			Ok(AssemblyInstruction::MemLoad8)
@@ -727,6 +757,32 @@ fn emit_instruction(
 			program.extend_from_slice(&target_address.to_le_bytes());
 		}
 
+		AssemblyInstruction::Pick(depth) => {
+			if *depth <= 15 {
+				program.push(PICK_UNSIGNED4_START + *depth as u8);
+			} else if *depth <= u8::MAX as u64 {
+				program.push(OpcodeByte::PickUnsigned8 as u8);
+				program.push(*depth as u8);
+			} else if *depth <= u16::MAX as u64 {
+				program.push(OpcodeByte::PickUnsigned16 as u8);
+				program.extend_from_slice(&(*depth as u16).to_le_bytes());
+			} else if *depth <= u32::MAX as u64 {
+				program.push(OpcodeByte::PickUnsigned32 as u8);
+				program.extend_from_slice(&(*depth as u32).to_le_bytes());
+			} else {
+				program.push(OpcodeByte::PickUnsigned64 as u8);
+				program.extend_from_slice(&depth.to_le_bytes());
+			}
+		}
+
+		AssemblyInstruction::RegGetIndirect => {
+			program.push(OpcodeByte::RegGetIndirect as u8);
+		}
+
+		AssemblyInstruction::RegSetIndirect => {
+			program.push(OpcodeByte::RegSetIndirect as u8);
+		}
+
 		AssemblyInstruction::Add => {
 			program.push(OpcodeByte::Add as u8);
 		}
@@ -837,10 +893,6 @@ fn emit_instruction(
 
 		AssemblyInstruction::Mul => {
 			program.push(OpcodeByte::Mul as u8);
-		}
-
-		AssemblyInstruction::Dup => {
-			program.push(OpcodeByte::Dup as u8);
 		}
 
 		AssemblyInstruction::Pop => {
@@ -1112,11 +1164,27 @@ fn emit_integer_literal_push(
 	}
 }
 
+fn pick_instruction_size(depth: u64) -> usize {
+	if depth <= 15 {
+		1
+	} else if depth <= u8::MAX as u64 {
+		2
+	} else if depth <= u16::MAX as u64 {
+		3
+	} else if depth <= u32::MAX as u64 {
+		5
+	} else {
+		9
+	}
+}
+
 fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 	match instruction {
 		AssemblyInstruction::Push(integer_literal) => {
 			integer_literal_push_size(integer_literal)
 		}
+
+		AssemblyInstruction::Pick(depth) => pick_instruction_size(*depth),
 
 		AssemblyInstruction::Noop
 			| AssemblyInstruction::Add
@@ -1133,7 +1201,6 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::ShiftLeft
 			| AssemblyInstruction::LogicShiftRight
 			| AssemblyInstruction::ArithShiftRight
-			| AssemblyInstruction::Dup
 			| AssemblyInstruction::Pop
 			| AssemblyInstruction::Swap
 			| AssemblyInstruction::Halt
@@ -1149,6 +1216,8 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::CompGreaterThanOrEqualSigned
 			| AssemblyInstruction::RegisterGet(_)
 			| AssemblyInstruction::RegisterSet(_)
+			| AssemblyInstruction::RegGetIndirect
+			| AssemblyInstruction::RegSetIndirect
 			| AssemblyInstruction::MemLoad8
 			| AssemblyInstruction::MemLoad16
 			| AssemblyInstruction::MemLoad32

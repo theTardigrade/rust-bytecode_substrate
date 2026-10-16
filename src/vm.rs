@@ -15,6 +15,8 @@ use crate::opcodes::{
 	PUSH_UNSIGNED4_END,
 	PUSH_SIGNED4_START,
 	PUSH_SIGNED4_END,
+	PICK_UNSIGNED4_START,
+	PICK_UNSIGNED4_END
 };
 
 use crate::host::{Host, HostContext, HostCallOutcome};
@@ -140,6 +142,13 @@ fn get_memory_range(memory: &[u8], address: Word, length: usize) -> std::ops::Ra
 	start..end
 }
 
+fn pick_word(stack: &mut Vec<Word>, depth: Word) {
+	let depth = usize::try_from(depth).expect("PICK depth is too large for this platform");
+	let index = stack.len().checked_sub(depth).and_then(|n| n.checked_sub(1)).expect("PICK depth exceeds stack size");
+	let value = stack[index];
+	stack.push(value);
+}
+
 pub struct VmResult {
 	pub stack: Vec<Word>,
 	pub exit_code: Option<Word>,
@@ -204,6 +213,12 @@ pub fn run_program(
 
 			call_stack.push(ip);
 			ip = add_relative_offset(ip, offset as i64);
+			continue;
+		}
+
+		if (PICK_UNSIGNED4_START..=PICK_UNSIGNED4_END).contains(&raw_opcode_byte) {
+			let depth = (raw_opcode_byte - PICK_UNSIGNED4_START) as Word;
+			pick_word(&mut stack, depth);
 			continue;
 		}
 
@@ -336,11 +351,6 @@ pub fn run_program(
 				stack.push((a >> shift) as Word);
 			}
 
-			OpcodeByte::Dup => {
-				let value = *stack.last().expect("stack underflow");
-				stack.push(value);
-			}
-
 			OpcodeByte::Pop => {
 				pop_word(&mut stack);
 			}
@@ -386,6 +396,26 @@ pub fn run_program(
 			OpcodeByte::Push64 => {
 				let value = get_next_u64_from_program(program, &mut ip);
 				stack.push(value);
+			}
+
+			OpcodeByte::PickUnsigned8 => {
+				let depth = get_next_byte_from_program(program, &mut ip) as Word;
+				pick_word(&mut stack, depth);
+			}
+
+			OpcodeByte::PickUnsigned16 => {
+				let depth = get_next_u16_from_program(program, &mut ip) as Word;
+				pick_word(&mut stack, depth);
+			}
+
+			OpcodeByte::PickUnsigned32 => {
+				let depth = get_next_u32_from_program(program, &mut ip) as Word;
+				pick_word(&mut stack, depth);
+			}
+
+			OpcodeByte::PickUnsigned64 => {
+				let depth = get_next_u64_from_program(program, &mut ip);
+				pick_word(&mut stack, depth);
 			}
 
 			OpcodeByte::CompEqual => {
@@ -682,6 +712,18 @@ pub fn run_program(
 				let range = get_memory_range(&memory, address, length);
 
 				memory[range].fill(value as u8);
+			}
+
+			OpcodeByte::RegGetIndirect => {
+				let index = usize::try_from(pop_word(&mut stack)).expect("register index is too large");
+				let value = *registers.get(index).expect("register index out of bounds");
+				stack.push(value);
+			}
+
+			OpcodeByte::RegSetIndirect => {
+				let index = usize::try_from(pop_word(&mut stack)).expect("register index is too large");
+				let value = pop_word(&mut stack);
+				*registers.get_mut(index).expect("register index out of bounds") = value;
 			}
 
 			OpcodeByte::HostCall => {
