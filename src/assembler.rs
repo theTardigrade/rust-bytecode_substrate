@@ -20,6 +20,8 @@ use crate::opcodes::{
 	REGISTER_COUNT,
 	REGISTER_GET_START,
 	REGISTER_SET_START,
+	HOST_CALL_DIRECT_START,
+	HOST_CALL_DIRECT_END,
 };
 
 enum IntegerLiteral {
@@ -176,6 +178,7 @@ enum AssemblyInstruction {
 	MemFill8,
 
 	HostCall(IntegerLiteral),
+	HostCallIndirect,
 
 	Relative {
 		kind: RelativeInstructionKind,
@@ -644,6 +647,12 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::HostCall(host_call_id))
 		}
 
+		"HOSTCALLIND" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+
+			Ok(AssemblyInstruction::HostCallIndirect)
+		}
+
 		"HALT" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
@@ -733,6 +742,18 @@ fn parse_host_call_id(text: &str) -> Result<IntegerLiteral, String> {
 	} else {
 		parse_integer_literal(text)
 	}
+}
+
+fn direct_host_call_opcode(host_call_id: &IntegerLiteral) -> Option<u8> {
+	let id = match host_call_id {
+		IntegerLiteral::Unsigned(id) => *id,
+		IntegerLiteral::Signed(id) if *id >= 0 => *id as u64,
+		IntegerLiteral::Signed(_) => return None,
+	};
+
+	let maximum_direct_id = (HOST_CALL_DIRECT_END - HOST_CALL_DIRECT_START) as u64;
+
+	(id <= maximum_direct_id).then(|| HOST_CALL_DIRECT_START + id as u8)
 }
 
 fn emit_instruction(
@@ -969,14 +990,18 @@ fn emit_instruction(
 		}
 
 		AssemblyInstruction::HostCall(host_call_id) => {
-			emit_integer_literal_push(
-				program,
-				host_call_id,
-			);
-
-			program.push(OpcodeByte::HostCall as u8);
+			if let Some(opcode) = direct_host_call_opcode(host_call_id) {
+				program.push(opcode);
+			} else {
+				emit_integer_literal_push(program, host_call_id);
+				program.push(OpcodeByte::HostCallIndirect as u8);
+			}
 		}
-		
+
+		AssemblyInstruction::HostCallIndirect => {
+			program.push(OpcodeByte::HostCallIndirect as u8);
+		}
+
 		AssemblyInstruction::Relative {
 			kind,
 			label,
@@ -1244,7 +1269,11 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::CallIndirect => 1,
 
 		AssemblyInstruction::HostCall(host_call_id) => {
-			integer_literal_push_size(host_call_id) + 1
+			if direct_host_call_opcode(host_call_id).is_some() {
+				1
+			} else {
+				integer_literal_push_size(host_call_id) + 1
+			}
 		}
 		
 		AssemblyInstruction::PushAddress(_) => 9,

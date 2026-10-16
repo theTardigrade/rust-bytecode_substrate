@@ -26,6 +26,9 @@ pub const JUMP_IF_ZERO_REL_SIGNED4_END: u8 = 0xCF;
 pub const JUMP_REL_SIGNED4_START: u8 = 0xD0;
 pub const JUMP_REL_SIGNED4_END: u8 = 0xDF;
 
+pub const HOST_CALL_DIRECT_START: u8 = 0xE0;
+pub const HOST_CALL_DIRECT_END: u8 = 0xFD;
+
 #[derive(TryFromPrimitive)]
 #[repr(u8)]
 pub enum OpcodeByte {
@@ -143,11 +146,8 @@ pub enum OpcodeByte {
 	// 0xD0–0xDF = JumpRelSigned4
 	// Signed 4-bit relative offset stored in the low nibble.
 
-	// 0xE0–0xEF currently free
+	// 0xE0–0xFD = direct host calls (IDs 0–29)
 
-	HostCall                       = 0xF0,
-
-	// 0xF1–0xFE currently free
-
-	Halt                           = 0xFF,
+	HostCallIndirect = 0xFE,
+	Halt = 0xFF,
 }

@@ -16,7 +16,9 @@ use crate::opcodes::{
 	PUSH_SIGNED4_START,
 	PUSH_SIGNED4_END,
 	PICK_UNSIGNED4_START,
-	PICK_UNSIGNED4_END
+	PICK_UNSIGNED4_END,
+	HOST_CALL_DIRECT_START,
+	HOST_CALL_DIRECT_END
 };
 
 use crate::host::{Host, HostContext, HostCallOutcome};
@@ -222,7 +224,15 @@ pub fn run_program(
 			continue;
 		}
 
-		let opcode = OpcodeByte::try_from(raw_opcode_byte).expect("unknown opcode byte");
+		let direct_host_call_id = (HOST_CALL_DIRECT_START..=HOST_CALL_DIRECT_END)
+			.contains(&raw_opcode_byte)
+			.then(|| (raw_opcode_byte - HOST_CALL_DIRECT_START) as Word);
+
+		let opcode= if direct_host_call_id.is_some() {
+			OpcodeByte::HostCallIndirect
+		} else {
+			OpcodeByte::try_from(raw_opcode_byte).expect("Unknown opcode byte")
+		};
 
 		match opcode {
 			OpcodeByte::Noop => {}
@@ -726,7 +736,7 @@ pub fn run_program(
 				*registers.get_mut(index).expect("register index out of bounds") = value;
 			}
 
-			OpcodeByte::HostCall => {
+			OpcodeByte::HostCallIndirect => {
 				let host_call_id = pop_word(&mut stack);
 				let mut context = HostContext::new(&mut stack, &mut memory);
 
