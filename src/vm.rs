@@ -728,6 +728,16 @@ pub fn run_program(
 				memory[range].fill(value as u8);
 			}
 
+			OpcodeByte::JumpIfZeroAbsIndirect => {
+				let condition = stack.pop().expect("stack underflow");
+				let target = stack.pop().expect("stack underflow");
+
+				if condition == 0 {
+					ip = usize::try_from(target)
+						.expect("jump target is too large for this platform");
+				}
+			}
+
 			OpcodeByte::RegGetIndirect => {
 				let index = usize::try_from(pop_word(&mut stack)).expect("register index is too large");
 				let value = *registers.get(index).expect("register index out of bounds");

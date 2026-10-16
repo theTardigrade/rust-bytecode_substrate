@@ -108,7 +108,9 @@ pub enum OpcodeByte {
 	MemCopy8                       = 0x3B,
 	MemFill8                       = 0x3C,
 
-	// 0x3D–0x3F currently free
+	JumpIfZeroAbsIndirect          = 0x3D,
+
+	// 0x3E–0x3F currently free
 
 	// 0x40–0x4F = PickUnsigned4
 	// Unsigned 4-bit stack depth stored in the low nibble. (Depth 0 duplicates the top stack value.)

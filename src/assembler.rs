@@ -155,6 +155,7 @@ enum AssemblyInstruction {
 	Return,
 
 	JumpIndirect,
+	JumpIfZeroIndirect,
 	CallIndirect,
 
 	RegisterGet(u8),
@@ -509,19 +510,22 @@ fn parse_instruction(
 		}
 
 		"JZ" => {
-			expect_operand_count(&parts, 1, mnemonic.as_str())?;
+			if parts.len() == 1 {
+				Ok(AssemblyInstruction::JumpIfZeroIndirect)
+			} else {
+				expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-			let label_name = parts[1];
+				let label_name = parts[1];
+				validate_label_name(label_name)?;
 
-			validate_label_name(label_name)?;
+				let label = labels.get_or_create(label_name);
 
-			let label = labels.get_or_create(label_name);
-
-			Ok(AssemblyInstruction::Relative {
-				kind: RelativeInstructionKind::JumpIfZero,
-				label,
-				width: RelativeWidth::Signed4,
-			})
+				Ok(AssemblyInstruction::Relative {
+					kind: RelativeInstructionKind::JumpIfZero,
+					label,
+					width: RelativeWidth::Signed4,
+				})
+			}
 		}
 
 		"CALL" => {
@@ -905,6 +909,10 @@ fn emit_instruction(
 			program.push(OpcodeByte::JumpAbsIndirect as u8);
 		}
 
+		AssemblyInstruction::JumpIfZeroIndirect => {
+			program.push(OpcodeByte::JumpIfZeroAbsIndirect as u8);
+		}
+
 		AssemblyInstruction::CallIndirect => {
 			program.push(OpcodeByte::CallAbsIndirect as u8);
 		}
@@ -1258,6 +1266,7 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::MemFill8
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
+			| AssemblyInstruction::JumpIfZeroIndirect
 			| AssemblyInstruction::CallIndirect
 			| AssemblyInstruction::HostCallIndirect => 1,
 
