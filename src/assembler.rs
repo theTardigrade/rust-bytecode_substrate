@@ -347,7 +347,9 @@ fn parse_instruction(
 
 			let operand = parts[1];
 
-			if validate_label_name(operand).is_ok() {
+			if let Some(integer_literal) = parse_named_constant(operand) {
+				Ok(AssemblyInstruction::Push(integer_literal))
+			} else if validate_label_name(operand).is_ok() {
 				let label = labels.get_or_create(operand);
 
 				Ok(AssemblyInstruction::PushAddress(label))
@@ -680,6 +682,10 @@ fn validate_label_name(label_name: &str) -> Result<(), String> {
 		return Err(format!("invalid label name: {}", label_name));
 	}
 
+	if HostCallId::from_assembly_name(label_name).is_some() {
+		return Err(format!("reserved label name: {}", label_name));
+	}
+
 	Ok(())
 }
 
@@ -728,9 +734,14 @@ fn parse_integer_literal(text: &str) -> Result<IntegerLiteral, String> {
 	}
 }
 
+fn parse_named_constant(name: &str) -> Option<IntegerLiteral> {
+	HostCallId::from_assembly_name(name)
+		.map(|id| IntegerLiteral::Unsigned(id as u64))
+}
+
 fn parse_host_call_id(text: &str) -> Result<IntegerLiteral, String> {
-	if let Some(id) = HostCallId::from_assembly_name(text) {
-		Ok(IntegerLiteral::Unsigned(id as u64))
+	if let Some(integer_literal) = parse_named_constant(text) {
+		Ok(integer_literal)
 	} else {
 		parse_integer_literal(text)
 	}
@@ -1690,7 +1701,7 @@ mod tests {
 	#[test]
 	fn push_address_uses_relaxed_layout() {
 		let source = format!(
-			"PADDR target\nJMP target\n{}target:\nHALT",
+			"PUSH target\nJMP target\n{}target:\nHALT",
 			"NOOP\n".repeat(8),
 		);
 
