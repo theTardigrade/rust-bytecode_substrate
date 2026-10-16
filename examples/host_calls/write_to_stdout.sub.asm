@@ -32,4 +32,4 @@ MEMST8
 ; Write memory[0..6] to stdout.
 PUSH 0       ; address
 PUSH 6       ; length
-HOSTCALL 0
+HOSTCALL WROUT

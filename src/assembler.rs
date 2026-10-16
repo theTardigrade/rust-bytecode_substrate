@@ -3,6 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use crate::data_structures::fenwick::FenwickTree;
 use crate::data_structures::segment_tree::SegmentTree;
 
+use crate::host_calls::HostCallId;
 use crate::opcodes::{
 	OpcodeByte,
 	PUSH_UNSIGNED4_START,
@@ -638,7 +639,7 @@ fn parse_instruction(
 		"HOSTCALL" => {
 			expect_operand_count(&parts, 1, mnemonic.as_str())?;
 
-			let host_call_id = parse_integer_literal(parts[1])?;
+			let host_call_id = parse_host_call_id(parts[1])?;
 
 			Ok(AssemblyInstruction::HostCall(host_call_id))
 		}
@@ -723,6 +724,14 @@ fn parse_integer_literal(text: &str) -> Result<IntegerLiteral, String> {
 		}
 	} else {
 		Ok(IntegerLiteral::Unsigned(magnitude))
+	}
+}
+
+fn parse_host_call_id(text: &str) -> Result<IntegerLiteral, String> {
+	if let Some(id) = HostCallId::from_assembly_name(text) {
+		Ok(IntegerLiteral::Unsigned(id as u64))
+	} else {
+		parse_integer_literal(text)
 	}
 }
 

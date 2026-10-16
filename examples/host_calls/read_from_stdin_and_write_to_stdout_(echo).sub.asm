@@ -6,7 +6,7 @@ POP
 ; Read up to 256 bytes from stdin.
 PUSH 0
 PUSH 256
-HOSTCALL 2
+HOSTCALL RDIN
 
 ; Stack now contains [bytes_read].
 
@@ -15,4 +15,4 @@ PUSH 0
 SWAP
 
 ; Write the bytes we received to stdout.
-HOSTCALL 0
+HOSTCALL WROUT

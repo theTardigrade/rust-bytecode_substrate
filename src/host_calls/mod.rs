@@ -19,6 +19,22 @@ pub enum HostCallId {
 	TerminateCurrentProcess = 255,
 }
 
+impl HostCallId {
+	pub fn from_assembly_name(name: &str) -> Option<Self> {
+		if name.eq_ignore_ascii_case("WROUT") {
+			Some(Self::WriteToStdout)
+		} else if name.eq_ignore_ascii_case("WRERR") {
+			Some(Self::WriteToStderr)
+		} else if name.eq_ignore_ascii_case("RDIN") {
+			Some(Self::ReadFromStdin)
+		} else if name.eq_ignore_ascii_case("TERM") {
+			Some(Self::TerminateCurrentProcess)
+		} else {
+			None
+		}
+	}
+}
+
 pub struct HostCallDispatcher;
 
 impl Host for HostCallDispatcher {
