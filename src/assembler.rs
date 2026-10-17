@@ -67,7 +67,9 @@ impl LabelTable {
 	}
 
 	fn get_or_create(&mut self, name: &str) -> LabelId {
-		if let Some(label_id) = self.ids_by_name.get(name) {
+		let key = name.to_ascii_lowercase();
+
+		if let Some(label_id) = self.ids_by_name.get(&key) {
 			return *label_id;
 		}
 
@@ -78,7 +80,7 @@ impl LabelTable {
 			instruction_boundary: None,
 		});
 
-		self.ids_by_name.insert(name.to_string(), label_id);
+		self.ids_by_name.insert(key, label_id);
 
 		label_id
 	}
@@ -2008,5 +2010,33 @@ mod tests {
 
 		assert_eq!(host.copied, b"ABCDEFGH");
 		assert_eq!(result.stack, vec![0]);
+	}
+
+	#[test]
+	fn label_references_are_case_insensitive() {
+		assert_eq!(
+			assemble("JMP FiNiSh\nfinish:\nHALT").unwrap(),
+			assemble("JMP finish\nfinish:\nHALT").unwrap(),
+		);
+
+		assert_eq!(
+			assemble("CALL SuBrOuTiNe\nsubroutine:\nRET").unwrap(),
+			assemble("CALL subroutine\nsubroutine:\nRET").unwrap(),
+		);
+
+		assert_eq!(
+			assemble("PUSH TaRgEt\ntarget:\nHALT").unwrap(),
+			assemble("PUSH target\ntarget:\nHALT").unwrap(),
+		);
+	}
+
+	#[test]
+	fn label_definitions_cannot_differ_only_by_case() {
+		let result = assemble(
+			"Start:\nNOOP\nSTART:\nHALT",
+		);
+
+		assert!(result.is_err());
+		assert!(result.unwrap_err().contains("duplicate label"));
 	}
 }
