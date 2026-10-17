@@ -691,6 +691,40 @@ pub fn run_program(
 				memory[range].copy_from_slice(&bytes);
 			}
 
+			opcode @ (
+				OpcodeByte::MemStore128
+				| OpcodeByte::MemStore256
+				| OpcodeByte::MemStore512
+				| OpcodeByte::MemStore1024
+			) => {
+				let word_count: usize = match opcode {
+					OpcodeByte::MemStore128 => 2,
+					OpcodeByte::MemStore256 => 4,
+					OpcodeByte::MemStore512 => 8,
+					OpcodeByte::MemStore1024 => 16,
+					_ => unreachable!(),
+				};
+
+				let stack_start = stack
+					.len()
+					.checked_sub(word_count + 1)
+					.expect("stack underflow");
+
+				let address = stack[stack_start];
+				let byte_count = word_count * 8;
+
+				let range = get_memory_range(&memory, address, byte_count);
+
+				for (index, &word) in stack[stack_start + 1..].iter().enumerate() {
+					let start = range.start + index * 8;
+
+					memory[start..start + 8]
+						.copy_from_slice(&word.to_le_bytes());
+				}
+
+				stack.truncate(stack_start);
+			}
+
 			OpcodeByte::MemSize => {
 				stack.push(memory.len() as Word);
 			}

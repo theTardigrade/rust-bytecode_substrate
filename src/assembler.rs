@@ -172,6 +172,10 @@ enum AssemblyInstruction {
 	MemStore16,
 	MemStore32,
 	MemStore64,
+	MemStore128,
+	MemStore256,
+	MemStore512,
+	MemStore1024,
 
 	MemSize,
 	MemGrow,
@@ -615,6 +619,26 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::MemStore64)
 		}
 
+		"MEMST128" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore128)
+		}
+
+		"MEMST256" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore256)
+		}
+
+		"MEMST512" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore512)
+		}
+
+		"MEMST1024" => {
+			expect_operand_count(&parts, 0, mnemonic.as_str())?;
+			Ok(AssemblyInstruction::MemStore1024)
+		}
+
 		"MEMSIZE" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 			Ok(AssemblyInstruction::MemSize)
@@ -980,6 +1004,22 @@ fn emit_instruction(
 			program.push(OpcodeByte::MemStore64 as u8);
 		}
 
+		AssemblyInstruction::MemStore128 => {
+			program.push(OpcodeByte::MemStore128 as u8);
+		}
+
+		AssemblyInstruction::MemStore256 => {
+			program.push(OpcodeByte::MemStore256 as u8);
+		}
+
+		AssemblyInstruction::MemStore512 => {
+			program.push(OpcodeByte::MemStore512 as u8);
+		}
+
+		AssemblyInstruction::MemStore1024 => {
+			program.push(OpcodeByte::MemStore1024 as u8);
+		}
+
 		AssemblyInstruction::MemSize => {
 			program.push(OpcodeByte::MemSize as u8);
 		}
@@ -1267,6 +1307,10 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::MemStore16
 			| AssemblyInstruction::MemStore32
 			| AssemblyInstruction::MemStore64
+			| AssemblyInstruction::MemStore128
+			| AssemblyInstruction::MemStore256
+			| AssemblyInstruction::MemStore512
+			| AssemblyInstruction::MemStore1024
 			| AssemblyInstruction::MemSize
 			| AssemblyInstruction::MemGrow
 			| AssemblyInstruction::MemCopy8
