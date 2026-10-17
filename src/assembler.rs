@@ -48,6 +48,12 @@ enum RelativeInstructionKind {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct LabelId(usize);
 
+#[derive(Clone, Copy)]
+struct DatumInfo {
+	label: LabelId,
+	length: u64,
+}
+
 struct Label {
 	name: String,
 	instruction_boundary: Option<usize>,
@@ -121,6 +127,9 @@ enum AssemblyInstruction {
 	Push(IntegerLiteral),
 	PushAddress(LabelId),
 
+	DataHeader(usize),
+	RawData(Vec<u8>),
+
 	Add,
 	Sub,
 	Mul,
@@ -183,6 +192,7 @@ enum AssemblyInstruction {
 	MemGrow,
 	MemCopy,
 	MemFill,
+	MemBytecodeCopy,
 
 	HostCall(IntegerLiteral),
 	HostCallIndirect,
@@ -244,6 +254,7 @@ fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 	let mut instructions = Vec::new();
 	let mut relative_instruction_indices = Vec::new();
 	let mut labels = LabelTable::new();
+	let mut data_symbols: HashMap<String, DatumInfo> = HashMap::new();
 
 	for line in source.lines() {
 		let line = strip_assembly_comment(line).trim();
@@ -255,26 +266,103 @@ fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 		if line.ends_with(':') {
 			let label_name = parse_label(line)?;
 			labels.define(&label_name, instructions.len())?;
-		} else {
-			let mut parts = line.splitn(2, char::is_whitespace);
-			let mnemonic = parts.next().unwrap();
-
-			if mnemonic.eq_ignore_ascii_case("DATACP") {
-				let operand = parts.next().unwrap_or("").trim();
-				let bytes = parse_data_string(operand)?;
-
-				instructions.extend(expand_data_copy(&bytes)?);
-				continue;
-			}
-
-			let instruction = parse_instruction(line, &mut labels)?;
-
-			if matches!(instruction, AssemblyInstruction::Relative { .. }) {
-				relative_instruction_indices.push(instructions.len());
-			}
-
-			instructions.push(instruction);
+			continue;
 		}
+
+		let mut parts = line.splitn(2, char::is_whitespace);
+		let mnemonic = parts.next().unwrap();
+		let operands = parts.next().unwrap_or("").trim();
+
+		if mnemonic.eq_ignore_ascii_case("DATA") {
+			let mut data_parts =
+				operands.splitn(2, char::is_whitespace);
+
+			let name = data_parts.next().unwrap_or("");
+			let literal = data_parts.next().unwrap_or("").trim();
+
+			validate_label_name(name)?;
+
+			let bytes = parse_string_literal(literal)
+				.map_err(|error| format!("DATA {}: {}", name, error))?;
+
+			let length = u64::try_from(bytes.len())
+				.map_err(|_| "DATA payload is too large".to_string())?;
+
+			// The symbol points past the header, to the payload.
+			let label = labels.define(name, instructions.len() + 1)?;
+
+			data_symbols.insert(
+				name.to_ascii_lowercase(),
+				DatumInfo { label, length },
+			);
+
+			instructions.push(
+				AssemblyInstruction::DataHeader(bytes.len()),
+			);
+
+			instructions.push(
+				AssemblyInstruction::RawData(bytes),
+			);
+
+			continue;
+		}
+
+		if mnemonic.eq_ignore_ascii_case("MEMDTCP") {
+			if operands.starts_with('"') {
+				let bytes = parse_string_literal(operands)
+					.map_err(|error| format!("MEMDTCP: {}", error))?;
+
+				instructions.extend(
+					expand_inline_data_copy(&bytes)?,
+				);
+			} else {
+				validate_label_name(operands)?;
+
+				let key = operands.to_ascii_lowercase();
+
+				let datum = data_symbols.get(&key)
+					.ok_or_else(|| {
+						format!(
+							"unknown or not yet declared DATA: {}",
+							operands,
+						)
+					})?;
+
+				instructions.push(
+					AssemblyInstruction::Pick(0),
+				);
+
+				instructions.push(
+					AssemblyInstruction::PushAddress(datum.label),
+				);
+
+				instructions.push(
+					AssemblyInstruction::Push(
+						IntegerLiteral::Unsigned(datum.length),
+					),
+				);
+
+				instructions.push(
+					AssemblyInstruction::MemBytecodeCopy,
+				);
+
+				instructions.push(
+					AssemblyInstruction::Push(
+						IntegerLiteral::Unsigned(datum.length),
+					),
+				);
+			}
+
+			continue;
+		}
+
+		let instruction = parse_instruction(line, &mut labels)?;
+
+		if matches!(instruction, AssemblyInstruction::Relative { .. }) {
+			relative_instruction_indices.push(instructions.len());
+		}
+
+		instructions.push(instruction);
 	}
 
 	Ok(AssemblyProgram {
@@ -307,7 +395,7 @@ fn strip_assembly_comment(line: &str) -> &str {
 	line
 }
 
-fn parse_data_string(operand: &str) -> Result<Vec<u8>, String> {
+fn parse_string_literal(operand: &str) -> Result<Vec<u8>, String> {
 	let Some(contents) = operand.strip_prefix('"') else {
 		return Err("expected a double-quoted string literal".to_string());
 	};
@@ -362,9 +450,9 @@ fn parse_data_string(operand: &str) -> Result<Vec<u8>, String> {
 	Err("unterminated string literal".to_string())
 }
 
-fn expand_data_copy(bytes: &[u8]) -> Result<Vec<AssemblyInstruction>, String> {
+fn expand_inline_data_copy(bytes: &[u8]) -> Result<Vec<AssemblyInstruction>, String> {
 	let length = u64::try_from(bytes.len())
-		.map_err(|_| "DATACP string is too large".to_string())?;
+		.map_err(|_| "string is too large".to_string())?;
 
 	let mut instructions = Vec::new();
 	let mut offset = 0;
@@ -928,6 +1016,38 @@ fn direct_host_call_opcode(host_call_id: &IntegerLiteral) -> Option<u8> {
 	(id <= maximum_direct_id).then(|| HOST_CALL_DIRECT_START + id as u8)
 }
 
+fn data_header_size(length: usize) -> usize {
+	if (1..=12).contains(&length) {
+		1
+	} else if length <= u8::MAX as usize {
+		2
+	} else if length <= u16::MAX as usize {
+		3
+	} else if length <= u32::MAX as usize {
+		5
+	} else {
+		9
+	}
+}
+
+fn emit_data_header(program: &mut Vec<u8>, length: usize) {
+	if (1..=12).contains(&length) {
+		program.push(OpcodeByte::DataLength1 as u8 + (length as u8 - 1));
+	} else if length <= u8::MAX as usize {
+		program.push(OpcodeByte::DataUnsigned8 as u8);
+		program.push(length as u8);
+	} else if length <= u16::MAX as usize {
+		program.push(OpcodeByte::DataUnsigned16 as u8);
+		program.extend_from_slice(&(length as u16).to_le_bytes());
+	} else if length <= u32::MAX as usize {
+		program.push(OpcodeByte::DataUnsigned32 as u8);
+		program.extend_from_slice(&(length as u32).to_le_bytes());
+	} else {
+		program.push(OpcodeByte::DataUnsigned64 as u8);
+		program.extend_from_slice(&(length as u64).to_le_bytes());
+	}
+}
+
 fn emit_instruction(
 	program: &mut Vec<u8>,
 	instruction: &AssemblyInstruction,
@@ -975,6 +1095,14 @@ fn emit_instruction(
 				program.push(OpcodeByte::PickUnsigned64 as u8);
 				program.extend_from_slice(&depth.to_le_bytes());
 			}
+		}
+
+		AssemblyInstruction::DataHeader(length) => {
+			emit_data_header(program, *length);
+		}
+
+		AssemblyInstruction::RawData(bytes) => {
+			program.extend_from_slice(bytes);
 		}
 
 		AssemblyInstruction::RegGetIndirect => {
@@ -1175,6 +1303,10 @@ fn emit_instruction(
 
 		AssemblyInstruction::MemCopy => {
 			program.push(OpcodeByte::MemCopy as u8);
+		}
+
+		AssemblyInstruction::MemBytecodeCopy => {
+			program.push(OpcodeByte::MemBytecodeCopy as u8);
 		}
 
 		AssemblyInstruction::MemFill => {
@@ -1412,6 +1544,12 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 
 		AssemblyInstruction::Pick(depth) => pick_instruction_size(*depth),
 
+		AssemblyInstruction::DataHeader(length) => {
+			data_header_size(*length)
+		}
+
+		AssemblyInstruction::RawData(bytes) => bytes.len(),
+
 		AssemblyInstruction::Noop
 			| AssemblyInstruction::Add
 			| AssemblyInstruction::Sub
@@ -1460,6 +1598,7 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::MemGrow
 			| AssemblyInstruction::MemCopy
 			| AssemblyInstruction::MemFill
+			| AssemblyInstruction::MemBytecodeCopy
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
 			| AssemblyInstruction::JumpIfZeroIndirect
@@ -1929,7 +2068,7 @@ mod tests {
 
 	fn check_data_copy(literal: &str, expected: &[u8]) {
 		let source = format!(
-			"PUSH {}\nMEMGRW\nDATACP {}\nHOST 0\nHALT\n",
+			"PUSH {}\nMEMGRW\nMEMDTCP {}\nHOST 0\nHALT\n",
 			expected.len(),
 			literal,
 		);
@@ -1965,7 +2104,7 @@ mod tests {
 	#[test]
 	fn data_copy_updates_label_layout_before_relaxation() {
 		let program = assemble(
-			"PUSH after\nJMP after\nDATACP \"ABCDEFGHIJKLMNOP\"\nafter:\nHALT",
+			"PUSH after\nJMP after\nMEMDTCP \"ABCDEFGHIJKLMNOP\"\nafter:\nHALT",
 		).unwrap();
 
 		let address =
@@ -1977,12 +2116,12 @@ mod tests {
 	#[test]
 	fn data_copy_rejects_invalid_strings() {
 		for source in [
-			"DATACP unquoted",
-			"DATACP \"unterminated",
-			"DATACP \"bad\\q\"",
-			"DATACP \"bad\\x0\"",
-			"DATACP \"fine\" extra",
-			"DATACP",
+			"MEMDTCP unquoted",
+			"MEMDTCP \"unterminated",
+			"MEMDTCP \"bad\\q\"",
+			"MEMDTCP \"bad\\x0\"",
+			"MEMDTCP \"fine\" extra",
+			"MEMDTCP",
 		] {
 			assert!(assemble(source).is_err(), "accepted: {}", source);
 		}
@@ -2001,7 +2140,7 @@ mod tests {
 		}
 
 		let source =
-			"PUSH 19\nMEMGRW\nPUSH 1\nDATACP \"ABCDEFGH\"\nHOST 0\nHALT";
+			"PUSH 19\nMEMGRW\nPUSH 1\nMEMDTCP \"ABCDEFGH\"\nHOST 0\nHALT";
 
 		let program = assemble(source).unwrap();
 		let mut host = CapturingHost { copied: Vec::new() };
@@ -2038,5 +2177,174 @@ mod tests {
 
 		assert!(result.is_err());
 		assert!(result.unwrap_err().contains("duplicate label"));
+	}
+
+	#[test]
+	fn data_uses_correct_header_encodings() {
+		for length in [
+			0usize, 1, 2, 12, 13, 255, 256, 65535, 65536,
+		] {
+			let text = "A".repeat(length);
+
+			let source = format!(
+				"DATA Example \"{}\"\nPUSH eXaMpLe\nHALT",
+				text,
+			);
+
+			let program = assemble(&source).unwrap();
+
+			let (expected_opcode, payload_start) = if length == 0 {
+				(OpcodeByte::DataUnsigned8 as u8, 2)
+			} else if length <= 12 {
+				(
+					OpcodeByte::DataLength1 as u8 + length as u8 - 1,
+					1,
+				)
+			} else if length <= 255 {
+				(OpcodeByte::DataUnsigned8 as u8, 2)
+			} else if length <= 65535 {
+				(OpcodeByte::DataUnsigned16 as u8, 3)
+			} else {
+				(OpcodeByte::DataUnsigned32 as u8, 5)
+			};
+
+			assert_eq!(program[0], expected_opcode);
+
+			assert_eq!(
+				&program[payload_start..payload_start + length],
+				text.as_bytes(),
+			);
+
+			let push_start = payload_start + length;
+
+			assert_eq!(
+				program[push_start],
+				OpcodeByte::Push64 as u8,
+			);
+
+			let address = u64::from_le_bytes(
+				program[push_start + 1..push_start + 9]
+					.try_into()
+					.unwrap(),
+			);
+
+			assert_eq!(address as usize, payload_start);
+		}
+	}
+
+	#[test]
+	fn named_data_can_be_copied_into_linear_memory() {
+		let expected = "Hello; world! 😄\n".as_bytes();
+
+		let source = format!(
+			"DATA Greeting \"Hello; world! 😄\\n\"\n\
+			PUSH {}\n\
+			MEMGRW\n\
+			MEMDTCP gReEtInG\n\
+			HOST WROUT\n\
+			HALT",
+			expected.len(),
+		);
+
+		let program = assemble(&source).unwrap();
+
+		let mut host = CapturingHost {
+			copied: Vec::new(),
+		};
+
+		let result = crate::vm::run_program(&program, &mut host);
+
+		assert_eq!(host.copied, expected);
+		assert!(result.stack.is_empty());
+	}
+
+	#[test]
+	fn data_names_must_be_unique_and_declared_before_copying() {
+		assert!(
+			assemble(
+				"MEMDTCP greeting\nDATA greeting \"Hello\"",
+			).is_err()
+		);
+
+		assert!(
+			assemble(
+				"DATA Greeting \"Hello\"\nDATA greeting \"World\"",
+			).is_err()
+		);
+
+		assert!(
+			assemble(
+				"DATA greeting \"Hello\"\nGREETING:\nHALT",
+			).is_err()
+		);
+
+		assert!(
+			assemble(
+				"Greeting:\nHALT\nDATA greeting \"Hello\"",
+			).is_err()
+		);
+	}
+
+	#[test]
+	fn execution_skips_embedded_data() {
+		let program = assemble(
+			"PUSH 4\n\
+			DATA unused \"\\xFF\\xFF\\xFF\"\n\
+			PUSH 5\n\
+			ADD\n\
+			HALT",
+		).unwrap();
+
+		let mut host = CapturingHost {
+			copied: Vec::new(),
+		};
+
+		let result = crate::vm::run_program(&program, &mut host);
+
+		assert_eq!(result.stack, vec![9]);
+	}
+
+	#[test]
+	fn data_addresses_survive_branch_relaxation() {
+		let source = format!(
+			"DATA message \"{}\"\n\
+			PUSH MESSAGE\n\
+			JMP finish\n\
+			{}\
+			finish:\n\
+			HALT",
+			"A".repeat(200),
+			"NOOP\n".repeat(140),
+		);
+
+		let program = assemble(&source).unwrap();
+
+		assert_eq!(
+			program[0],
+			OpcodeByte::DataUnsigned8 as u8,
+		);
+
+		assert_eq!(program[1], 200);
+
+		// The DATA header occupies two bytes.
+		let push_start = 202;
+
+		assert_eq!(
+			program[push_start],
+			OpcodeByte::Push64 as u8,
+		);
+
+		let address = u64::from_le_bytes(
+			program[push_start + 1..push_start + 9]
+				.try_into()
+				.unwrap(),
+		);
+
+		assert_eq!(address, 2);
+
+		assert_eq!(
+			program[push_start + 9],
+			OpcodeByte::JumpRelSigned16 as u8,
+		);
 	}
 }

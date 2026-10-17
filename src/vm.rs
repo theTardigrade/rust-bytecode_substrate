@@ -151,6 +151,40 @@ fn pick_word(stack: &mut Vec<Word>, depth: Word) {
 	stack.push(value);
 }
 
+fn skip_data_payload(program: &[u8], ip: &mut usize, length: u64) {
+	let length = usize::try_from(length)
+		.expect("data length is too large for this platform");
+
+	let end = (*ip)
+		.checked_add(length)
+		.expect("data payload is out of range");
+
+	if end > program.len() {
+		panic!("data payload extends beyond bytecode");
+	}
+
+	*ip = end;
+}
+
+fn get_bytecode_range(
+	program: &[u8],
+	address: Word,
+	length: usize,
+) -> std::ops::Range<usize> {
+	let start = usize::try_from(address)
+		.expect("bytecode address is too large for this platform");
+
+	let end = start
+		.checked_add(length)
+		.expect("bytecode access is out of range");
+
+	if end > program.len() {
+		panic!("bytecode access is out of bounds");
+	}
+
+	start..end
+}
+
 pub struct VmResult {
 	pub stack: Vec<Word>,
 	pub exit_code: Option<Word>,
@@ -744,11 +778,30 @@ pub fn run_program(
 				let source = pop_word(&mut stack);
 				let destination = pop_word(&mut stack);
 
-				let length = usize::try_from(length).expect("memory copy length is too large for this platform");
+				let length = usize::try_from(length)
+					.expect("memory copy length is too large for this platform");
 				let source_range = get_memory_range(&memory, source, length);
 				let destination_range = get_memory_range(&memory, destination, length);
 
 				memory.copy_within(source_range, destination_range.start);
+			}
+
+			OpcodeByte::MemBytecodeCopy => {
+				let length = pop_word(&mut stack);
+				let source = pop_word(&mut stack);
+				let destination = pop_word(&mut stack);
+
+				let length = usize::try_from(length)
+					.expect("bytecode copy length is too large for this platform");
+
+				let source_range =
+					get_bytecode_range(program, source, length);
+
+				let destination_range =
+					get_memory_range(&memory, destination, length);
+
+				memory[destination_range]
+					.copy_from_slice(&program[source_range]);
 			}
 
 			OpcodeByte::MemFill => {
@@ -760,6 +813,46 @@ pub fn run_program(
 				let range = get_memory_range(&memory, address, length);
 
 				memory[range].fill(value as u8);
+			}
+
+			OpcodeByte::DataUnsigned8 => {
+				let length = get_next_byte_from_program(program, &mut ip);
+				skip_data_payload(program, &mut ip, length as u64);
+			}
+
+			OpcodeByte::DataUnsigned16 => {
+				let length = get_next_u16_from_program(program, &mut ip);
+				skip_data_payload(program, &mut ip, length as u64);
+			}
+
+			OpcodeByte::DataUnsigned32 => {
+				let length = get_next_u32_from_program(program, &mut ip);
+				skip_data_payload(program, &mut ip, length as u64);
+			}
+
+			OpcodeByte::DataUnsigned64 => {
+				let length = get_next_u64_from_program(program, &mut ip);
+				skip_data_payload(program, &mut ip, length);
+			}
+
+			opcode @ (
+				OpcodeByte::DataLength1
+				| OpcodeByte::DataLength2
+				| OpcodeByte::DataLength3
+				| OpcodeByte::DataLength4
+				| OpcodeByte::DataLength5
+				| OpcodeByte::DataLength6
+				| OpcodeByte::DataLength7
+				| OpcodeByte::DataLength8
+				| OpcodeByte::DataLength9
+				| OpcodeByte::DataLength10
+				| OpcodeByte::DataLength11
+				| OpcodeByte::DataLength12
+			) => {
+				let length =
+					(opcode as u8 - OpcodeByte::DataLength1 as u8 + 1) as u64;
+
+				skip_data_payload(program, &mut ip, length);
 			}
 
 			OpcodeByte::JumpIfZeroAbsIndirect => {

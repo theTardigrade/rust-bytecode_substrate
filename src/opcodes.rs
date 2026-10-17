@@ -126,8 +126,9 @@ pub enum OpcodeByte {
 	MemGrow = 0x57,
 	MemCopy = 0x58,
 	MemFill = 0x59,
+	MemBytecodeCopy = 0x5A,
 
-	// 0x5A–0x5F currently free
+	// 0x5B–0x5F currently free
 
 	// 0x60–0x6F = RegisterGet
 	// Pushes the value of the register identified by the low nibble.
@@ -135,7 +136,23 @@ pub enum OpcodeByte {
 	// 0x70–0x7F = RegisterSet
 	// Pops a value and stores it in the register identified by the low nibble.
 
-	// 0x80–0x8F currently free
+	DataUnsigned8 = 0x80,
+	DataUnsigned16 = 0x81,
+	DataUnsigned32 = 0x82,
+	DataUnsigned64 = 0x83,
+
+	DataLength1 = 0x84,
+	DataLength2 = 0x85,
+	DataLength3 = 0x86,
+	DataLength4 = 0x87,
+	DataLength5 = 0x88,
+	DataLength6 = 0x89,
+	DataLength7 = 0x8A,
+	DataLength8 = 0x8B,
+	DataLength9 = 0x8C,
+	DataLength10 = 0x8D,
+	DataLength11 = 0x8E,
+	DataLength12 = 0x8F,
 
 	// 0x90–0x9F = PushUnsigned4
 	// Unsigned 4-bit value stored in the low nibble.
