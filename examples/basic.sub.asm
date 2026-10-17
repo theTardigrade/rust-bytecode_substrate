@@ -7,11 +7,11 @@ NOOP
 
 ; Allocate 16 bytes of linear memory.
 PUSH 16
-MEMGROW
+MEMGRW
 POP
 
 ; Check that memory is now 16 bytes long.
-MEMSIZE
+MEMSZE
 PUSH 16
 CEQ
 JZ failure
@@ -20,7 +20,7 @@ JZ failure
 PUSH 4
 PUSH 7
 PUSH 4
-MEMFILL8
+MEMFL
 
 ; Verify one of the filled bytes.
 PUSH 4
@@ -42,7 +42,7 @@ MEMST8
 PUSH 2
 PUSH 0
 PUSH 2
-MEMCOPY8
+MEMCP
 
 ; Load the copied values and add them: 21 + 21 = 42.
 PUSH 2
@@ -99,7 +99,7 @@ arithmetic_test:
 	POP                ; discard the remainder
 
 	PUSH 0
-	SWAP
+	SWP
 	ADD                 ; 0 + 42 = 42
 
 	RET

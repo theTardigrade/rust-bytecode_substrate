@@ -739,7 +739,7 @@ pub fn run_program(
 				stack.push(old_size as Word);
 			}
 
-			OpcodeByte::MemCopy8 => {
+			OpcodeByte::MemCopy => {
 				let length = pop_word(&mut stack);
 				let source = pop_word(&mut stack);
 				let destination = pop_word(&mut stack);
@@ -751,7 +751,7 @@ pub fn run_program(
 				memory.copy_within(source_range, destination_range.start);
 			}
 
-			OpcodeByte::MemFill8 => {
+			OpcodeByte::MemFill => {
 				let length = pop_word(&mut stack);
 				let value = pop_word(&mut stack);
 				let address = pop_word(&mut stack);

@@ -1,18 +1,18 @@
 ; Allocate 256 bytes of linear memory.
 PUSH 256
-MEMGROW
+MEMGRW
 POP
 
 ; Read up to 256 bytes from stdin.
 PUSH 0
 PUSH 256
-HOSTCALL RDIN
+HOST RDIN
 
 ; Stack now contains [bytes_read].
 
 ; Put the address before the length.
 PUSH 0
-SWAP
+SWP
 
 ; Write the bytes we received to stdout.
-HOSTCALL WROUT
+HOST WROUT

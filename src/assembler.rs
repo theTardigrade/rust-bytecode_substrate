@@ -179,8 +179,8 @@ enum AssemblyInstruction {
 
 	MemSize,
 	MemGrow,
-	MemCopy8,
-	MemFill8,
+	MemCopy,
+	MemFill,
 
 	HostCall(IntegerLiteral),
 	HostCallIndirect,
@@ -340,7 +340,7 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::Pop)
 		}
 
-		"SWAP" => {
+		"SWP" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Swap)
@@ -555,7 +555,7 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::Return)
 		}
 
-		"REGGET" => {
+		"RGET" => {
 			if parts.len() == 1 {
 				Ok(AssemblyInstruction::RegGetIndirect)
 			} else {
@@ -567,7 +567,7 @@ fn parse_instruction(
 			}
 		}
 
-		"REGSET" => {
+		"RSET" => {
 			if parts.len() == 1 {
 				Ok(AssemblyInstruction::RegSetIndirect)
 			} else {
@@ -639,27 +639,27 @@ fn parse_instruction(
 			Ok(AssemblyInstruction::MemStore1024)
 		}
 
-		"MEMSIZE" => {
+		"MEMSZE" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 			Ok(AssemblyInstruction::MemSize)
 		}
 
-		"MEMGROW" => {
+		"MEMGRW" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 			Ok(AssemblyInstruction::MemGrow)
 		}
 
-		"MEMCOPY8" => {
+		"MEMCP" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-			Ok(AssemblyInstruction::MemCopy8)
+			Ok(AssemblyInstruction::MemCopy)
 		}
 
-		"MEMFILL8" => {
+		"MEMFL" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
-			Ok(AssemblyInstruction::MemFill8)
+			Ok(AssemblyInstruction::MemFill)
 		}
 
-		"HOSTCALL" => {
+		"HOST" => {
 			if parts.len() == 1 {
 				Ok(AssemblyInstruction::HostCallIndirect)
 			} else {
@@ -1028,12 +1028,12 @@ fn emit_instruction(
 			program.push(OpcodeByte::MemGrow as u8);
 		}
 
-		AssemblyInstruction::MemCopy8 => {
-			program.push(OpcodeByte::MemCopy8 as u8);
+		AssemblyInstruction::MemCopy => {
+			program.push(OpcodeByte::MemCopy as u8);
 		}
 
-		AssemblyInstruction::MemFill8 => {
-			program.push(OpcodeByte::MemFill8 as u8);
+		AssemblyInstruction::MemFill => {
+			program.push(OpcodeByte::MemFill as u8);
 		}
 
 		AssemblyInstruction::HostCall(host_call_id) => {
@@ -1313,8 +1313,8 @@ fn instruction_size(instruction: &AssemblyInstruction) -> usize {
 			| AssemblyInstruction::MemStore1024
 			| AssemblyInstruction::MemSize
 			| AssemblyInstruction::MemGrow
-			| AssemblyInstruction::MemCopy8
-			| AssemblyInstruction::MemFill8
+			| AssemblyInstruction::MemCopy
+			| AssemblyInstruction::MemFill
 			| AssemblyInstruction::Return
 			| AssemblyInstruction::JumpIndirect
 			| AssemblyInstruction::JumpIfZeroIndirect

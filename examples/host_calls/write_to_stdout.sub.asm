@@ -1,6 +1,6 @@
 ; Allocate 6 bytes of linear memory.
 PUSH 6
-MEMGROW
+MEMGRW
 POP
 
 ; Store "Hello\n" in memory.
@@ -32,4 +32,4 @@ MEMST8
 ; Write memory[0..6] to stdout.
 PUSH 0       ; address
 PUSH 6       ; length
-HOSTCALL WROUT
+HOST WROUT
