@@ -29,10 +29,7 @@ fn main() -> std::process::ExitCode {
 	let path_string = path.to_string_lossy();
 
 	let program = if path_string.ends_with(ASSEMBLY_FILE_EXTENSION) {
-		let source = fs::read_to_string(path)
-			.unwrap_or_else(|error| panic!("failed to read {}: {}", path.display(), error));
-
-		assembler::assemble(&source)
+		assembler::assemble_file(path)
 			.unwrap_or_else(|error| panic!("assembly failed: {}", error))
 	} else if path_string.ends_with(BYTECODE_FILE_EXTENSION) {
 		fs::read(path)

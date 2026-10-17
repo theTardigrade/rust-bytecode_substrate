@@ -1,3 +1,5 @@
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::collections::{HashMap, VecDeque};
 
 use crate::data_structures::fenwick::FenwickTree;
@@ -224,6 +226,133 @@ pub fn assemble(source: &str) -> Result<Vec<u8>, String> {
 	relax_relative_instructions(&mut assembly_program, &mut layout)?;
 
 	emit_program(&assembly_program, &layout)
+}
+
+pub fn assemble_file(path: &Path) -> Result<Vec<u8>, String> {
+	let mut expanded_source = String::new();
+	let mut active_files = Vec::new();
+
+	expand_includes(
+		path,
+		&mut active_files,
+		&mut expanded_source,
+	)?;
+
+	assemble(&expanded_source)
+}
+
+fn expand_includes(
+	path: &Path,
+	active_files: &mut Vec<PathBuf>,
+	output: &mut String,
+) -> Result<(), String> {
+	const MAX_INCLUDE_DEPTH: usize = 64;
+
+	// Resolve the actual filesystem path. This also lets us
+	// identify the same file when referenced through different paths.
+	let canonical_path = fs::canonicalize(path)
+		.map_err(|error| {
+			format!(
+				"failed to resolve assembly file {}: {}",
+				path.display(),
+				error,
+			)
+		})?;
+
+	// Reject direct and indirect include cycles.
+	if active_files.contains(&canonical_path) {
+		return Err(format!(
+			"circular INC detected: {}",
+			canonical_path.display(),
+		));
+	}
+
+	// Prevent excessively deep chains of nested includes.
+	if active_files.len() >= MAX_INCLUDE_DEPTH {
+		return Err(format!(
+			"INC nesting exceeds {} files",
+			MAX_INCLUDE_DEPTH,
+		));
+	}
+
+	let source = fs::read_to_string(&canonical_path)
+		.map_err(|error| {
+			format!(
+				"failed to read assembly file {}: {}",
+				canonical_path.display(),
+				error,
+			)
+		})?;
+
+	active_files.push(canonical_path.clone());
+
+	for (line_index, line) in source.lines().enumerate() {
+		let stripped = strip_assembly_comment(line).trim();
+
+		let mut parts = stripped.splitn(2, char::is_whitespace);
+		let mnemonic = parts.next().unwrap_or("");
+
+		if mnemonic.eq_ignore_ascii_case("INC") {
+			let operand = parts.next().unwrap_or("").trim();
+
+			let path_bytes = parse_string_literal(operand)
+				.map_err(|error| {
+					format!(
+						"{}:{}: INC: {}",
+						canonical_path.display(),
+						line_index + 1,
+						error,
+					)
+				})?;
+
+			let include_name = String::from_utf8(path_bytes)
+				.map_err(|_| {
+					format!(
+						"{}:{}: INC path must be valid UTF-8",
+						canonical_path.display(),
+						line_index + 1,
+					)
+				})?;
+
+			if include_name.is_empty() {
+				return Err(format!(
+					"{}:{}: INC path cannot be empty",
+					canonical_path.display(),
+					line_index + 1,
+				));
+			}
+
+			// Relative paths are resolved against the directory
+			// containing the file with this INC directive.
+			let include_path = canonical_path
+				.parent()
+				.unwrap_or(Path::new("."))
+				.join(include_name);
+
+			expand_includes(
+				&include_path,
+				active_files,
+				output,
+			)
+			.map_err(|error| {
+				format!(
+					"{}:{}: {}",
+					canonical_path.display(),
+					line_index + 1,
+					error,
+				)
+			})?;
+		} else {
+			// Preserve ordinary assembly lines verbatim.
+			// The newline keeps adjacent files from merging lines.
+			output.push_str(line);
+			output.push('\n');
+		}
+	}
+
+	active_files.pop();
+
+	Ok(())
 }
 
 fn emit_program(
@@ -2346,5 +2475,87 @@ mod tests {
 			program[push_start + 9],
 			OpcodeByte::JumpRelSigned16 as u8,
 		);
+	}
+
+	fn make_include_test_directory() -> PathBuf {
+		use std::sync::atomic::{AtomicU64, Ordering};
+
+		static NEXT_ID: AtomicU64 = AtomicU64::new(0);
+
+		let directory = std::env::temp_dir().join(format!(
+			"bytecode_substrate_inc_{}_{}",
+			std::process::id(),
+			NEXT_ID.fetch_add(1, Ordering::Relaxed),
+		));
+
+		fs::create_dir_all(&directory).unwrap();
+
+		directory
+	}
+
+	#[test]
+	fn include_supports_nested_files_and_cross_file_labels() {
+		let directory = make_include_test_directory();
+		let library_directory = directory.join("lib");
+
+		fs::create_dir_all(&library_directory).unwrap();
+
+		let main_file = directory.join("main.sub.asm");
+
+		fs::write(
+			&main_file,
+			"JMP main\n\
+			INC \"lib/outer.sub.asm\" ; nested library\n\
+			main:\n\
+			PUSH 21\n\
+			CALL double\n\
+			HALT\n",
+		).unwrap();
+
+		fs::write(
+			library_directory.join("outer.sub.asm"),
+			"INC \"inner.sub.asm\"\n",
+		).unwrap();
+
+		fs::write(
+			library_directory.join("inner.sub.asm"),
+			"double:\nDUP\nADD\nRET\n",
+		).unwrap();
+
+		let program = assemble_file(&main_file).unwrap();
+
+		let mut host = CapturingHost {
+			copied: Vec::new(),
+		};
+
+		let result = crate::vm::run_program(&program, &mut host);
+
+		assert_eq!(result.stack, vec![42]);
+
+		fs::remove_dir_all(directory).unwrap();
+	}
+
+	#[test]
+	fn include_rejects_cycles() {
+		let directory = make_include_test_directory();
+
+		let first = directory.join("first.sub.asm");
+		let second = directory.join("second.sub.asm");
+
+		fs::write(
+			&first,
+			"INC \"second.sub.asm\"\n",
+		).unwrap();
+
+		fs::write(
+			&second,
+			"INC \"first.sub.asm\"\n",
+		).unwrap();
+
+		let error = assemble_file(&first).unwrap_err();
+
+		assert!(error.contains("circular INC"));
+
+		fs::remove_dir_all(directory).unwrap();
 	}
 }
