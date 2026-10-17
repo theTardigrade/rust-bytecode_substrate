@@ -244,10 +244,7 @@ fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 	let mut labels = LabelTable::new();
 
 	for line in source.lines() {
-		let line = line
-			.split_once(';')
-			.map_or(line, |(before_comment, _)| before_comment)
-			.trim();
+		let line = strip_assembly_comment(line).trim();
 
 		if line.is_empty() {
 			continue;
@@ -257,6 +254,17 @@ fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 			let label_name = parse_label(line)?;
 			labels.define(&label_name, instructions.len())?;
 		} else {
+			let mut parts = line.splitn(2, char::is_whitespace);
+			let mnemonic = parts.next().unwrap();
+
+			if mnemonic.eq_ignore_ascii_case("DATACP") {
+				let operand = parts.next().unwrap_or("").trim();
+				let bytes = parse_data_string(operand)?;
+
+				instructions.extend(expand_data_copy(&bytes)?);
+				continue;
+			}
+
 			let instruction = parse_instruction(line, &mut labels)?;
 
 			if matches!(instruction, AssemblyInstruction::Relative { .. }) {
@@ -272,6 +280,141 @@ fn parse_source(source: &str) -> Result<AssemblyProgram, String> {
 		relative_instruction_indices,
 		labels,
 	})
+}
+
+fn strip_assembly_comment(line: &str) -> &str {
+	let mut inside_string = false;
+	let mut escaped = false;
+
+	for (index, character) in line.char_indices() {
+		if inside_string {
+			if escaped {
+				escaped = false;
+			} else if character == '\\' {
+				escaped = true;
+			} else if character == '"' {
+				inside_string = false;
+			}
+		} else if character == '"' {
+			inside_string = true;
+		} else if character == ';' {
+			return &line[..index];
+		}
+	}
+
+	line
+}
+
+fn parse_data_string(operand: &str) -> Result<Vec<u8>, String> {
+	let Some(contents) = operand.strip_prefix('"') else {
+		return Err("expected a double-quoted string literal".to_string());
+	};
+
+	let mut bytes = Vec::new();
+	let mut characters = contents.chars();
+
+	while let Some(character) = characters.next() {
+		if character == '"' {
+			if characters.as_str().trim().is_empty() {
+				return Ok(bytes);
+			}
+
+			return Err("unexpected text after string literal".to_string());
+		}
+
+		if character == '\\' {
+			let escaped = characters.next()
+				.ok_or_else(|| "unfinished string escape sequence".to_string())?;
+
+			match escaped {
+				'n' => bytes.push(b'\n'),
+				'r' => bytes.push(b'\r'),
+				't' => bytes.push(b'\t'),
+				'0' => bytes.push(0),
+				'\\' => bytes.push(b'\\'),
+				'"' => bytes.push(b'"'),
+				'x' => {
+					let high = characters.next()
+						.and_then(|digit| digit.to_digit(16))
+						.ok_or_else(|| "\\x escape expects two hexadecimal digits".to_string())?;
+
+					let low = characters.next()
+						.and_then(|digit| digit.to_digit(16))
+						.ok_or_else(|| "\\x escape expects two hexadecimal digits".to_string())?;
+
+					bytes.push(((high << 4) | low) as u8);
+				}
+				_ => return Err(format!(
+					"unsupported string escape sequence: \\{}",
+					escaped
+				)),
+			}
+		} else {
+			let mut encoded = [0; 4];
+			bytes.extend_from_slice(
+				character.encode_utf8(&mut encoded).as_bytes()
+			);
+		}
+	}
+
+	Err("unterminated string literal".to_string())
+}
+
+fn expand_data_copy(bytes: &[u8]) -> Result<Vec<AssemblyInstruction>, String> {
+	let length = u64::try_from(bytes.len())
+		.map_err(|_| "DATACP string is too large".to_string())?;
+
+	let mut instructions = Vec::new();
+	let mut offset = 0;
+
+	while offset < bytes.len() {
+		let remaining = bytes.len() - offset;
+
+		let width = [128, 64, 32, 16, 8, 4, 2, 1]
+			.iter()
+			.copied()
+			.find(|&width| width <= remaining)
+			.unwrap();
+
+		// Keep the original destination below the temporary address.
+		instructions.push(AssemblyInstruction::Pick(0));
+
+		if offset != 0 {
+			instructions.push(AssemblyInstruction::Push(
+				IntegerLiteral::Unsigned(offset as u64),
+			));
+			instructions.push(AssemblyInstruction::Add);
+		}
+
+		for word_bytes in bytes[offset..offset + width].chunks(8) {
+			let mut packed = [0u8; 8];
+			packed[..word_bytes.len()].copy_from_slice(word_bytes);
+
+			instructions.push(AssemblyInstruction::Push(
+				IntegerLiteral::Unsigned(u64::from_le_bytes(packed)),
+			));
+		}
+
+		instructions.push(match width {
+			1 => AssemblyInstruction::MemStore8,
+			2 => AssemblyInstruction::MemStore16,
+			4 => AssemblyInstruction::MemStore32,
+			8 => AssemblyInstruction::MemStore64,
+			16 => AssemblyInstruction::MemStore128,
+			32 => AssemblyInstruction::MemStore256,
+			64 => AssemblyInstruction::MemStore512,
+			128 => AssemblyInstruction::MemStore1024,
+			_ => unreachable!(),
+		});
+
+		offset += width;
+	}
+
+	instructions.push(AssemblyInstruction::Push(
+		IntegerLiteral::Unsigned(length),
+	));
+
+	Ok(instructions)
 }
 
 fn expect_operand_count(
@@ -1572,6 +1715,28 @@ fn build_relative_dependency_tree(
 mod tests {
 	use super::*;
 
+	struct CapturingHost {
+		copied: Vec<u8>,
+	}
+
+	impl crate::host::Host for CapturingHost {
+		fn call(
+			&mut self,
+			id: u64,
+			context: &mut crate::host::HostContext,
+		) -> crate::host::HostCallOutcome {
+			assert_eq!(id, 0);
+
+			let length = context.pop_word() as usize;
+			let address = context.pop_word() as usize;
+
+			self.copied =
+				context.memory()[address..address + length].to_vec();
+
+			crate::host::HostCallOutcome::Continue
+		}
+	}
+
 	fn relax_source(source: &str) -> AssemblyProgram {
 		let mut assembly_program = parse_source(source).unwrap();
 
@@ -1712,7 +1877,7 @@ mod tests {
 		);
 	}
 
-#[test]
+	#[test]
 	fn backward_offset_negative_128_uses_signed8() {
 		let source = format!(
 			"target:\n{}JMP target",
@@ -1758,5 +1923,90 @@ mod tests {
 		);
 
 		assert_eq!(pushed_address, 19);
+	}
+
+	fn check_data_copy(literal: &str, expected: &[u8]) {
+		let source = format!(
+			"PUSH {}\nMEMGRW\nDATACP {}\nHOST 0\nHALT\n",
+			expected.len(),
+			literal,
+		);
+
+		let program = assemble(&source).unwrap();
+		let mut host = CapturingHost { copied: Vec::new() };
+
+		let result = crate::vm::run_program(&program, &mut host);
+
+		assert_eq!(host.copied, expected);
+		assert!(result.stack.is_empty());
+	}
+
+	#[test]
+	fn data_copy_simple_and_escaped_strings() {
+		check_data_copy(r#""Hi!\n""#, b"Hi!\n");
+
+		check_data_copy(
+			r#""a;b" ; semicolon is part of the string"#,
+			b"a;b",
+		);
+
+		check_data_copy(
+			r#""A\0\t\r\\\"\xFF""#,
+			b"A\0\t\r\\\"\xFF",
+		);
+
+		check_data_copy(r#""hi 😄""#, "hi 😄".as_bytes());
+
+		check_data_copy(r#""""#, b"");
+	}
+
+	#[test]
+	fn data_copy_updates_label_layout_before_relaxation() {
+		let program = assemble(
+			"PUSH after\nJMP after\nDATACP \"ABCDEFGHIJKLMNOP\"\nafter:\nHALT",
+		).unwrap();
+
+		let address =
+			u64::from_le_bytes(program[1..9].try_into().unwrap()) as usize;
+
+		assert_eq!(program[address], OpcodeByte::Halt as u8);
+	}
+
+	#[test]
+	fn data_copy_rejects_invalid_strings() {
+		for source in [
+			"DATACP unquoted",
+			"DATACP \"unterminated",
+			"DATACP \"bad\\q\"",
+			"DATACP \"bad\\x0\"",
+			"DATACP \"fine\" extra",
+			"DATACP",
+		] {
+			assert!(assemble(source).is_err(), "accepted: {}", source);
+		}
+	}
+
+	#[test]
+	fn data_copy_all_store_widths_and_unaligned_destination() {
+		for length in [1usize, 2, 4, 8, 16, 32, 64, 128, 129, 255, 256] {
+			let text: String = (0..length)
+				.map(|index| (b'A' + (index % 26) as u8) as char)
+				.collect();
+
+			let literal = format!("\"{}\"", text);
+
+			check_data_copy(&literal, text.as_bytes());
+		}
+
+		let source =
+			"PUSH 19\nMEMGRW\nPUSH 1\nDATACP \"ABCDEFGH\"\nHOST 0\nHALT";
+
+		let program = assemble(source).unwrap();
+		let mut host = CapturingHost { copied: Vec::new() };
+
+		let result = crate::vm::run_program(&program, &mut host);
+
+		assert_eq!(host.copied, b"ABCDEFGH");
+		assert_eq!(result.stack, vec![0]);
 	}
 }
