@@ -53,7 +53,7 @@ MEMLD8
 
 ADD
 
-; Exercise ordinary relative CALL/RET while preserving 42.
+; Exercise ordinary relative CALL/RT while preserving 42.
 CALL arithmetic_test
 
 ; Exercise an absolute indirect call.
@@ -102,7 +102,7 @@ arithmetic_test:
 	SWP
 	ADD                 ; 0 + 42 = 42
 
-	RET
+	RT
 
 
 ; Exercise bitwise operations and shifts while preserving 42.
@@ -131,7 +131,7 @@ bitwise_test:
 	PUSH 1
 	SL                  ; 21 << 1 = 42
 
-	RET
+	RT
 
 
 failure:

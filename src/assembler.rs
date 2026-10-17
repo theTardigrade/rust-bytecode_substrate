@@ -911,7 +911,7 @@ fn parse_instruction(
 			}
 		}
 
-		"RET" => {
+		"RT" => {
 			expect_operand_count(&parts, 0, mnemonic.as_str())?;
 
 			Ok(AssemblyInstruction::Return)
@@ -2288,8 +2288,8 @@ mod tests {
 		);
 
 		assert_eq!(
-			assemble("CALL SuBrOuTiNe\nsubroutine:\nRET").unwrap(),
-			assemble("CALL subroutine\nsubroutine:\nRET").unwrap(),
+			assemble("CALL SuBrOuTiNe\nsubroutine:\nRT").unwrap(),
+			assemble("CALL subroutine\nsubroutine:\nRT").unwrap(),
 		);
 
 		assert_eq!(
@@ -2519,7 +2519,7 @@ mod tests {
 
 		fs::write(
 			library_directory.join("inner.sub.asm"),
-			"double:\nDUP\nADD\nRET\n",
+			"double:\nDUP\nADD\nRT\n",
 		).unwrap();
 
 		let program = assemble_file(&main_file).unwrap();
