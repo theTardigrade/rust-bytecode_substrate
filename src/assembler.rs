@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::data_structures::fenwick::FenwickTree;
 use crate::data_structures::segment_tree::SegmentTree;
@@ -231,10 +231,12 @@ pub fn assemble(source: &str) -> Result<Vec<u8>, String> {
 pub fn assemble_file(path: &Path) -> Result<Vec<u8>, String> {
 	let mut expanded_source = String::new();
 	let mut active_files = Vec::new();
+	let mut included_files = HashSet::new();
 
 	expand_includes(
 		path,
 		&mut active_files,
+		&mut included_files,
 		&mut expanded_source,
 	)?;
 
@@ -244,6 +246,7 @@ pub fn assemble_file(path: &Path) -> Result<Vec<u8>, String> {
 fn expand_includes(
 	path: &Path,
 	active_files: &mut Vec<PathBuf>,
+	included_files: &mut HashSet<PathBuf>,
 	output: &mut String,
 ) -> Result<(), String> {
 	const MAX_INCLUDE_DEPTH: usize = 64;
@@ -267,6 +270,12 @@ fn expand_includes(
 		));
 	}
 
+	// A file already processed in this assembly operation
+	// does not need to be included again.
+	if included_files.contains(&canonical_path) {
+		return Ok(());
+	}
+
 	// Prevent excessively deep chains of nested includes.
 	if active_files.len() >= MAX_INCLUDE_DEPTH {
 		return Err(format!(
@@ -284,6 +293,7 @@ fn expand_includes(
 			)
 		})?;
 
+	included_files.insert(canonical_path.clone());
 	active_files.push(canonical_path.clone());
 
 	for (line_index, line) in source.lines().enumerate() {
@@ -332,6 +342,7 @@ fn expand_includes(
 			expand_includes(
 				&include_path,
 				active_files,
+				included_files,
 				output,
 			)
 			.map_err(|error| {
@@ -2555,6 +2566,53 @@ mod tests {
 		let error = assemble_file(&first).unwrap_err();
 
 		assert!(error.contains("circular INC"));
+
+		fs::remove_dir_all(directory).unwrap();
+	}
+
+	#[test]
+	fn include_skips_transitive_duplicates() {
+		let directory = make_include_test_directory();
+		let library_directory = directory.join("lib");
+
+		fs::create_dir_all(&library_directory).unwrap();
+
+		let main_file = directory.join("main.sub.asm");
+
+		fs::write(
+			&main_file,
+			"INC \"lib/left.sub.asm\"\n\
+			INC \"lib/right.sub.asm\"\n\
+			PUSH 21\n\
+			CALL STD__DOUBLE\n\
+			HALT\n",
+		).unwrap();
+
+		fs::write(
+			library_directory.join("left.sub.asm"),
+			"INC \"shared.sub.asm\"\n",
+		).unwrap();
+
+		fs::write(
+			library_directory.join("right.sub.asm"),
+			"INC \"./shared.sub.asm\"\n",
+		).unwrap();
+
+		fs::write(
+			library_directory.join("shared.sub.asm"),
+			"JMP __STD__DOUBLE_EOF__\n\
+			STD__DOUBLE:\n\
+			DUP\n\
+			ADD\n\
+			RT\n\
+			__STD__DOUBLE_EOF__:\n",
+		).unwrap();
+
+		// This succeeds only if shared.sub.asm is included once.
+		// Otherwise, duplicate label definitions cause an error.
+		let program = assemble_file(&main_file).unwrap();
+
+		assert!(!program.is_empty());
 
 		fs::remove_dir_all(directory).unwrap();
 	}
